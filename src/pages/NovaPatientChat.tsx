@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { getScenario } from "../lib/scenarios";
 import { streamChat, type Msg } from "../lib/streamChat";
-import { generateTalk } from "../lib/generateTalk";
 import { createChecklist, updateChecklist, getCompletionPercentage, evaluateConsultation, type OsceEvaluation, type ChecklistCategory } from "../lib/osce";
 import { saveResult, saveSession, loadSession, clearSession } from "../lib/progress";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
@@ -17,7 +16,6 @@ import ConfirmDialog from "../components/novapatient/ConfirmDialog";
 import ProductNav from "../components/ProductNav";
 import ReactMarkdown from "react-markdown";
 
-const PATIENT_IMAGE_URL = `${window.location.origin}/images/patient-avatar.png`;
 const CONSULTATION_DURATION = 8 * 60;
 
 type Phase = "active" | "evaluating" | "feedback";
@@ -32,8 +30,6 @@ export default function NovaPatientChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timerRunning, setTimerRunning] = useState(true);
   const [phase, setPhase] = useState<Phase>("active");
@@ -52,7 +48,11 @@ export default function NovaPatientChat() {
     const saved = loadSession();
     if (saved && saved.scenarioCode === scenarioCode) {
       setMessages(saved.messages as Msg[]);
-      setChecklist(saved.checklist as ChecklistCategory[]);
+      // RegExps don't survive JSON serialization — rebuild from scratch and merge `covered` state
+      const savedCovered = new Set(
+        (saved.checklist as ChecklistCategory[]).filter(c => c.covered).map(c => c.id)
+      );
+      setChecklist(createChecklist().map(c => savedCovered.has(c.id) ? { ...c, covered: true } : c));
       setInitialDuration(saved.remainingSeconds);
     }
   }, [scenario, scenarioCode]);
@@ -74,8 +74,6 @@ export default function NovaPatientChat() {
   useEffect(() => {
     if (isSpeaking && isListening) stopListening();
   }, [isSpeaking, isListening, stopListening]);
-
-  const handleVideoEnd = useCallback(() => setVideoUrl(null), []);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || isLoading || !scenario || phase !== "active") return;
@@ -102,13 +100,9 @@ export default function NovaPatientChat() {
             return [...prev, { role: "assistant", content: assistantSoFar }];
           });
         },
-        onDone: async () => {
+        onDone: () => {
           setIsLoading(false);
-          if (!assistantSoFar) return;
-          setIsGeneratingVideo(true);
-          const url = await generateTalk(assistantSoFar, PATIENT_IMAGE_URL);
-          setIsGeneratingVideo(false);
-          if (url) setVideoUrl(url); else speak(assistantSoFar);
+          if (assistantSoFar) speak(assistantSoFar);
         },
         onError: (err) => { setIsLoading(false); setError(err); },
       });
@@ -254,7 +248,6 @@ export default function NovaPatientChat() {
               isSpeaking={isSpeaking} isListening={isListening}
               scenarioName={scenario.name}
               patientGender={scenario.patient.gender} patientName={scenario.patient.name}
-              videoUrl={videoUrl} isGeneratingVideo={isGeneratingVideo} onVideoEnd={handleVideoEnd}
             />
 
             <div className="border-t pt-4" style={{ borderColor: 'var(--card-border)' }}>
@@ -280,7 +273,7 @@ export default function NovaPatientChat() {
                 isSpeaking={isSpeaking} isListening={isListening}
                 scenarioName={scenario.name}
                 patientGender={scenario.patient.gender} patientName={scenario.patient.name}
-                compact videoUrl={videoUrl} isGeneratingVideo={isGeneratingVideo} onVideoEnd={handleVideoEnd}
+                compact
               />
               <div className="flex items-center justify-between">
                 <ConsultationTimer durationSeconds={initialDuration} running={timerRunning} onTimeUp={handleTimeUp} />
