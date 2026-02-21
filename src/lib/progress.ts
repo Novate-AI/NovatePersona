@@ -125,7 +125,7 @@ async function updateStreak(userId: string): Promise<void> {
     .from('user_streaks')
     .select('*')
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
 
   if (!existing) {
     await supabase.from('user_streaks').insert({
@@ -181,7 +181,7 @@ export async function getStreak(): Promise<UserStreak> {
       .from('user_streaks')
       .select('*')
       .eq('user_id', userId)
-      .single()
+      .maybeSingle()
 
     if (error || !data) return defaultStreak
 

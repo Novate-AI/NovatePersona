@@ -93,6 +93,7 @@ export default function SignUp() {
               id="email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
@@ -107,6 +108,7 @@ export default function SignUp() {
               id="password"
               type="password"
               required
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 6 characters"
@@ -121,6 +123,7 @@ export default function SignUp() {
               id="confirm"
               type="password"
               required
+              autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="••••••••"
