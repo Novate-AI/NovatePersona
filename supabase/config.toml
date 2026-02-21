@@ -1,0 +1,5 @@
+[functions.chat]
+verify_jwt = false
+
+[functions.generate-talk]
+verify_jwt = false

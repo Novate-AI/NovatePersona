@@ -1,0 +1,186 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Outfit:wght@100..900&display=swap');
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: Outfit, system-ui, sans-serif;
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0c4a6e;
+  --color-persona-tutor: #0ea5e9;
+  --color-persona-ielts: #8b5cf6;
+  --color-persona-medica: #10b981;
+  --color-surface-0: #09090b;
+  --color-surface-1: #111113;
+  --color-surface-2: #18181b;
+  --color-surface-3: #27272a;
+}
+
+@layer base {
+  :root {
+    --bg-main: #ffffff;
+    --text-main: #18181b;
+    --heading-main: #09090b;
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --glass-border: rgba(0, 0, 0, 0.06);
+    --glass-hover: rgba(0, 0, 0, 0.03);
+    --card-bg: #ffffff;
+    --card-border: #e4e4e7;
+    --card-hover-border: #d4d4d8;
+    --subtle-bg: #f4f4f5;
+    scroll-behavior: smooth;
+  }
+
+  .dark {
+    --bg-main: #09090b;
+    --text-main: #a1a1aa;
+    --heading-main: #fafafa;
+    --glass-bg: rgba(17, 17, 19, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-hover: rgba(255, 255, 255, 0.03);
+    --card-bg: #111113;
+    --card-border: rgba(255, 255, 255, 0.06);
+    --card-hover-border: rgba(255, 255, 255, 0.12);
+    --subtle-bg: #18181b;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    @apply antialiased transition-colors duration-300;
+    font-family: var(--font-sans);
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(14, 165, 233, 0.08), transparent);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+    color: var(--heading-main) !important;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+  }
+
+  .glass-card:hover {
+    border-color: var(--card-hover-border);
+  }
+
+  .surface-0 { background-color: var(--bg-main); }
+  .surface-1 { background-color: var(--card-bg); }
+  .surface-2 { background-color: var(--subtle-bg); }
+
+  .text-primary { color: var(--heading-main); }
+  .text-secondary { color: var(--text-main); }
+
+  .animate-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .glow-emerald {
+    box-shadow: 0 0 40px -10px rgba(16, 185, 129, 0.3);
+  }
+
+  .glow-brand {
+    box-shadow: 0 0 40px -10px rgba(14, 165, 233, 0.3);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #10b981, #0ea5e9);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition-all active:scale-[0.97];
+    background: linear-gradient(135deg, #10b981, #059669);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1), 0 0 20px -8px rgba(16, 185, 129, 0.4);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1), 0 0 30px -6px rgba(16, 185, 129, 0.5);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition-all active:scale-[0.97];
+    color: var(--heading-main);
+    border: 1px solid var(--card-border);
+    background: var(--card-bg);
+  }
+  .btn-secondary:hover {
+    border-color: var(--card-hover-border);
+    background: var(--subtle-bg);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all active:scale-[0.97];
+    color: var(--text-main);
+  }
+  .btn-ghost:hover {
+    background: var(--glass-hover);
+    color: var(--heading-main);
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* NovaPatient avatar animations */
+.np-breathe { animation: npBreathe 4s ease-in-out infinite; }
+.np-jaw-move { animation: npJawMove 0.4s ease-in-out infinite alternate; }
+.np-mouth-flicker { animation: npMouthFlicker 0.3s ease-in-out infinite alternate; }
+.np-glow-pulse { animation: npGlowPulse 2s ease-in-out infinite; }
+.np-eq-bar { animation: npEqBar 0.6s ease-in-out infinite alternate; }
+
+/* Mobile safe areas */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Prevent double-tap zoom on touch targets */
+button, a, select, input, textarea {
+  touch-action: manipulation;
+}
+
+/* Smooth scrolling on mobile */
+@media (max-width: 640px) {
+  .overflow-y-auto { -webkit-overflow-scrolling: touch; }
+}
+
+@keyframes npBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+@keyframes npJawMove { 0% { border-bottom-left-radius: 50%; border-bottom-right-radius: 50%; } 100% { border-bottom-left-radius: 45%; border-bottom-right-radius: 45%; transform: scaleY(1.01); } }
+@keyframes npMouthFlicker { 0% { opacity: 0.1; } 100% { opacity: 0.35; } }
+@keyframes npGlowPulse { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.03); } }
+@keyframes npEqBar { 0% { height: 20%; } 100% { height: 100%; } }
