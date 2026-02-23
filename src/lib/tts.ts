@@ -68,7 +68,7 @@ async function speakWithServer(text: string, lang: string): Promise<boolean> {
 
   return new Promise<boolean>((resolve) => {
     const audio = new Audio(audioUrl)
-    audio.playbackRate = 1.1
+    audio.playbackRate = 1.0
     currentAudio = audio
 
     audio.onplay = () => setIsSpeaking(true)

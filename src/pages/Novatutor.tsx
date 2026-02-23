@@ -37,7 +37,7 @@ export default function Novatutor() {
   const [uiLocale, setUiLocale] = useState<UILocale>(detectUILocale)
   const [ttsSpeaking, setTtsSpeaking] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const lastSpokenRef = useRef<string | null>(null)
+
 
   const corrections = messages.filter(m => m.role === 'assistant' && m.meta?.correction).length
   const turns = messages.filter(m => m.role === 'user').length
@@ -62,15 +62,6 @@ export default function Novatutor() {
     if (ttsSpeaking && isListening) stop()
   }, [ttsSpeaking, isListening, stop])
 
-  // Auto-speak new assistant messages (only after mic is off)
-  useEffect(() => {
-    const last = messages.filter(m => m.role === 'assistant').pop()
-    if (!last || last.id === lastSpokenRef.current) return
-    lastSpokenRef.current = last.id
-    if (isListening) stop()
-    if (last.content.trim()) speakText(last.content, language)
-  }, [messages, language, isListening, stop])
-
   useEffect(() => { if (transcript) setInput(transcript) }, [transcript])
 
   const handleSend = useCallback(async (content: string) => {
@@ -80,15 +71,18 @@ export default function Novatutor() {
       if (!(await tryStartSession())) return
       sessionConsumedRef.current = true
     }
+    if (isListening) stop()
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text, timestamp: Date.now() }
     setMessages(prev => [...prev, userMsg])
     setInput('')
+    setTranscript('')
     setLoading(true)
     try {
       const res = await sendChatMessage([...messages, userMsg], { mode: 'novatutor' as PersonaMode, language, cefrLevel })
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: res.content, timestamp: Date.now(), meta: res.meta }])
+      if (res.content.trim()) speakText(res.content, language)
     } finally { setLoading(false) }
-  }, [messages, language, cefrLevel, loading, tryStartSession])
+  }, [messages, language, cefrLevel, loading, tryStartSession, isListening, stop, setTranscript])
 
   const handleKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(input) } }
 
