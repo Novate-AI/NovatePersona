@@ -8,21 +8,30 @@ import Onboarding, { isOnboardedGlobal } from './components/Onboarding'
 import { useTheme } from './contexts/ThemeContext'
 import { useAuth } from './contexts/AuthContext'
 
-const Home = lazy(() => import('./pages/Home'))
-const Novatutor = lazy(() => import('./pages/Novatutor'))
-const NovateExaminer = lazy(() => import('./pages/NovateExaminer'))
-const NovaPatientScenarios = lazy(() => import('./pages/NovaPatientScenarios'))
-const NovaPatientChat = lazy(() => import('./pages/NovaPatientChat'))
-const Features = lazy(() => import('./pages/Features'))
-const Pricing = lazy(() => import('./pages/Pricing'))
-const About = lazy(() => import('./pages/About'))
-const SignIn = lazy(() => import('./pages/auth/SignIn'))
-const SignUp = lazy(() => import('./pages/auth/SignUp'))
-const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'))
-const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'))
-const AuthCallback = lazy(() => import('./pages/auth/AuthCallback'))
-const Leaderboard = lazy(() => import('./pages/Leaderboard'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
+function lazyRetry(fn: () => Promise<{ default: React.ComponentType }>) {
+  return lazy(() =>
+    fn().catch(() => {
+      window.location.reload()
+      return new Promise(() => {})
+    })
+  )
+}
+
+const Home = lazyRetry(() => import('./pages/Home'))
+const Novatutor = lazyRetry(() => import('./pages/Novatutor'))
+const NovateExaminer = lazyRetry(() => import('./pages/NovateExaminer'))
+const NovaPatientScenarios = lazyRetry(() => import('./pages/NovaPatientScenarios'))
+const NovaPatientChat = lazyRetry(() => import('./pages/NovaPatientChat'))
+const Features = lazyRetry(() => import('./pages/Features'))
+const Pricing = lazyRetry(() => import('./pages/Pricing'))
+const About = lazyRetry(() => import('./pages/About'))
+const SignIn = lazyRetry(() => import('./pages/auth/SignIn'))
+const SignUp = lazyRetry(() => import('./pages/auth/SignUp'))
+const ForgotPassword = lazyRetry(() => import('./pages/auth/ForgotPassword'))
+const ResetPassword = lazyRetry(() => import('./pages/auth/ResetPassword'))
+const AuthCallback = lazyRetry(() => import('./pages/auth/AuthCallback'))
+const Leaderboard = lazyRetry(() => import('./pages/Leaderboard'))
+const Dashboard = lazyRetry(() => import('./pages/Dashboard'))
 
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
