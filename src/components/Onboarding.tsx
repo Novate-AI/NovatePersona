@@ -13,7 +13,7 @@ function markOnboarded(): void {
 
 const GOALS = [
   { id: 'osce', label: 'Pass my OSCE', icon: '🩺', path: '/nova-patient', desc: 'Clinical history-taking practice' },
-  { id: 'ielts', label: 'Ace IELTS speaking', icon: '🎓', path: '/nova-ielts', desc: 'Full 3-part mock exams' },
+  { id: 'ielts', label: 'Ace IELTS speaking', icon: '🎓', path: '/novate-examiner', desc: 'Full 3-part mock exams' },
   { id: 'language', label: 'Learn a language', icon: '🗣️', path: '/novatutor', desc: '10+ languages, real-time corrections' },
   { id: 'explore', label: 'Just exploring', icon: '👀', path: '/dashboard', desc: 'Take a look around' },
 ]
@@ -103,7 +103,7 @@ export default function Onboarding({ userName, onComplete }: OnboardingProps) {
             <span className="text-4xl mb-4 block">🚀</span>
             <h2 className="text-lg font-bold text-primary mb-2">You&apos;re all set!</h2>
             <p className="text-sm text-secondary leading-relaxed mb-2">
-              You get <strong className="text-primary">3 free sessions per day</strong>. 
+              You get <strong className="text-primary">3 free sessions total</strong>. 
               Upgrade anytime for unlimited access.
             </p>
             <div className="glass-card py-3! px-4! my-5 text-left">

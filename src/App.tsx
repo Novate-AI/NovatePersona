@@ -10,7 +10,7 @@ import { useAuth } from './contexts/AuthContext'
 
 const Home = lazy(() => import('./pages/Home'))
 const Novatutor = lazy(() => import('./pages/Novatutor'))
-const NovaIELTS = lazy(() => import('./pages/NovaIELTS'))
+const NovateExaminer = lazy(() => import('./pages/NovateExaminer'))
 const NovaPatientScenarios = lazy(() => import('./pages/NovaPatientScenarios'))
 const NovaPatientChat = lazy(() => import('./pages/NovaPatientChat'))
 const Features = lazy(() => import('./pages/Features'))
@@ -46,7 +46,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const location = useLocation()
-  const isImmersive = location.pathname.includes('/chat') || location.pathname === '/novatutor' || location.pathname === '/nova-ielts' || location.pathname === '/nova-patient'
+  const isImmersive = location.pathname.includes('/chat') || location.pathname === '/novatutor' || location.pathname === '/novate-examiner' || location.pathname === '/nova-patient'
   const isAuthPage = location.pathname.startsWith('/auth')
 
   useEffect(() => {
@@ -166,7 +166,7 @@ export default function App() {
 
             {/* Protected */}
             <Route path="/novatutor" element={<ProtectedRoute><Novatutor /></ProtectedRoute>} />
-            <Route path="/nova-ielts" element={<ProtectedRoute><NovaIELTS /></ProtectedRoute>} />
+            <Route path="/novate-examiner" element={<ProtectedRoute><NovateExaminer /></ProtectedRoute>} />
             <Route path="/nova-patient" element={<ProtectedRoute><NovaPatientScenarios /></ProtectedRoute>} />
             <Route path="/nova-patient/chat" element={<ProtectedRoute><NovaPatientChat /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

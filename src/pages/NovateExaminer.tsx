@@ -5,7 +5,7 @@ import { useSessionGate } from '../hooks/useSessionGate'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import { sendChatMessage, type PersonaMode } from '../services/chatApi'
 import type { ChatMessage, IELTSPart, IELTSBandFeedback } from '../types'
-import { speak as ttsSpeak } from '../lib/tts'
+import { speak as ttsSpeak, stop as ttsStop, onSpeakingChange } from '../lib/tts'
 
 const PARTS: IELTSPart[] = [
   {
@@ -62,12 +62,7 @@ async function generateAIBandFeedback(messages: ChatMessage[]): Promise<IELTSBan
   }
 }
 
-function speakText(text: string) {
-  if (!text.trim()) return
-  ttsSpeak(text.trim(), 'en-GB')
-}
-
-export default function NovaIELTS() {
+export default function NovateExaminer() {
   const { blocked, sessionsUsed, dismissWall, tryStartSession } = useSessionGate()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -77,11 +72,36 @@ export default function NovaIELTS() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<IELTSBandFeedback | null>(null)
   const [evaluating, setEvaluating] = useState(false)
+  const [, setAiSpeaking] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const wasListeningRef = useRef(false)
 
   const { transcript, supported, start, stop, isListening, setTranscript } = useSpeechRecognition({
     language: 'en-GB',
   })
+
+  useEffect(() => {
+    return onSpeakingChange((speaking) => {
+      setAiSpeaking(speaking)
+      if (!speaking && wasListeningRef.current) {
+        wasListeningRef.current = false
+        setTranscript('')
+        setInput('')
+        setTimeout(() => start(), 300)
+      }
+    })
+  }, [start, setTranscript])
+
+  const speakText = useCallback((text: string) => {
+    if (!text.trim()) return
+    if (isListening) {
+      wasListeningRef.current = true
+      stop()
+    }
+    setTranscript('')
+    setInput('')
+    ttsSpeak(text.trim(), 'en-GB')
+  }, [isListening, stop, setTranscript])
 
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0) return
@@ -107,22 +127,26 @@ export default function NovaIELTS() {
     setTimeLeft(p?.durationSeconds ?? 180)
     setTranscript('')
 
+    const greetingText = part === 1
+      ? "Good morning. My name is Sarah, and I'll be your examiner today. Let's begin with some questions about yourself. Can you tell me about where you live?"
+      : part === 2
+      ? "Now I'm going to give you a topic, and I'd like you to talk about it for one to two minutes. Here's your topic card. You have one minute to prepare."
+      : "Let's move on to Part 3 where we'll discuss some deeper questions related to the topic. Are you ready?"
+
     const greeting: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: part === 1
-        ? "Good morning. My name is Sarah, and I'll be your examiner today. Let's begin with some questions about yourself. Can you tell me about where you live?"
-        : part === 2
-        ? "Now I'm going to give you a topic, and I'd like you to talk about it for one to two minutes. Here's your topic card. You have one minute to prepare."
-        : "Let's move on to Part 3 where we'll discuss some deeper questions related to the topic. Are you ready?",
+      content: greetingText,
       timestamp: Date.now(),
     }
     setMessages([greeting])
+    speakText(greetingText)
   }, [setTranscript, tryStartSession])
 
   const finishPart = useCallback(async () => {
     setTimeLeft(null)
     stop()
+    ttsStop()
 
     const userMessages = messages.filter(m => m.role === 'user')
     if (userMessages.length > 0) {
@@ -154,7 +178,7 @@ export default function NovaIELTS() {
       setLoading(true)
       try {
         const res = await sendChatMessage([...messages, userMsg], {
-          mode: 'nova-ielts' as PersonaMode,
+          mode: 'novate-examiner' as PersonaMode,
           ieltsPart: currentPart,
         })
         const assistantMsg: ChatMessage = {
@@ -164,6 +188,7 @@ export default function NovaIELTS() {
           timestamp: Date.now(),
         }
         setMessages((prev) => [...prev, assistantMsg])
+        speakText(res.content)
       } finally {
         setLoading(false)
       }
@@ -191,7 +216,7 @@ export default function NovaIELTS() {
         {/* Top bar */}
         <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
           <div className="flex items-center gap-3">
-            <ProductNav current="Nova IELTS" />
+            <ProductNav current="NovateExaminer" />
             <span className="badge bg-violet-500/10 text-violet-600 dark:text-violet-400">
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-violet-500 inline-block animate-pulse" />
               Speaking Mock
@@ -265,7 +290,7 @@ export default function NovaIELTS() {
       return (
         <div className="h-screen flex flex-col">
           <div className="shrink-0 border-b flex items-center h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
-            <ProductNav current="Nova IELTS" />
+            <ProductNav current="NovateExaminer" />
           </div>
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center space-y-4">
@@ -292,7 +317,7 @@ export default function NovaIELTS() {
       <div className="h-screen flex flex-col">
         <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
           <div className="flex items-center gap-3">
-            <ProductNav current="Nova IELTS" />
+            <ProductNav current="NovateExaminer" />
             <span className="badge bg-violet-500/10 text-violet-500">Part {currentPart} Report</span>
           </div>
           <span className="text-xs text-secondary">IELTS Official Scoring Criteria</span>
@@ -361,7 +386,7 @@ export default function NovaIELTS() {
       {/* Top bar */}
       <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
         <div className="flex items-center gap-3">
-          <ProductNav current="Nova IELTS" />
+          <ProductNav current="NovateExaminer" />
           <div className="hidden sm:block h-4 w-px bg-(--card-border)" />
           <span className="hidden sm:inline text-xs text-secondary">{partInfo?.title}</span>
         </div>

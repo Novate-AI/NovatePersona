@@ -5,13 +5,14 @@
 
 import { LANGUAGES, type ChatMessage } from '../types'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001/api/chat';
+const BASE_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001').replace(/\/api\/chat\/?$/, '');
+const BACKEND_URL = `${BASE_URL}/api/chat`;
 
 /** Shown and spoken as the initial Novatutor welcome. */
 export const NOVATUTOR_WELCOME =
   "Hey! Tom here. Ready to practice? Pick a topic or just chat in your target language — I'll keep it at your level and throw in corrections when useful."
 
-export type PersonaMode = 'novatutor' | 'nova-ielts' | 'nova-ielts-eval' | 'nova-patient'
+export type PersonaMode = 'novatutor' | 'novate-examiner' | 'nova-ielts-eval' | 'nova-patient'
 
 export interface ChatApiOptions {
   mode: PersonaMode
@@ -41,7 +42,7 @@ const SYSTEM_PROMPTS: Record<PersonaMode, (opts: ChatApiOptions) => string> = {
     6. MANDATORY: provide a full translation of your entire response into English in this format: "Translation: [your response translated to English]".
   `;
   },
-  'nova-ielts': (opts) => `
+  'novate-examiner': (opts) => `
     You are an official IELTS Speaking Examiner. 
     You are conducting Part ${opts.ieltsPart || 1} of the IELTS Speaking test.
     

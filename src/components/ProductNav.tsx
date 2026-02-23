@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 const PRODUCTS = [
   { path: '/', label: 'Home', icon: '🏠' },
   { path: '/novatutor', label: 'Novatutor', icon: '🗣️', desc: 'Language practice' },
-  { path: '/nova-ielts', label: 'Nova IELTS', icon: '🎓', desc: 'Speaking mock exams' },
+  { path: '/novate-examiner', label: 'NovateExaminer', icon: '🎓', desc: 'Speaking mock exams' },
   { path: '/nova-patient', label: 'NovaPatient', icon: '🩺', desc: 'OSCE consultation' },
   { path: '/dashboard', label: 'Dashboard', icon: '📊', desc: 'Your progress' },
   { path: '/leaderboard', label: 'Leaderboard', icon: '🏆', desc: 'Top practitioners' },

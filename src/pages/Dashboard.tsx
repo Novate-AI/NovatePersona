@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { getProgress, getStreak, type ScenarioResult, type UserStreak } from '../lib/progress'
-import { getSubscription, getSessionsUsedToday, type Plan } from '../lib/subscription'
+import { getSubscription, getSessionsUsed, FREE_LIMIT, type PlanType } from '../lib/subscription'
 import { useAuth } from '../contexts/AuthContext'
 import { scenarios } from '../lib/scenarios'
 
@@ -35,8 +35,8 @@ interface DashboardData {
   ieltsProgress: ScenarioResult[]
   tutorProgress: ScenarioResult[]
   streak: UserStreak
-  plan: Plan
-  sessionsToday: number
+  plan: PlanType
+  sessionsUsed: number
 }
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
@@ -80,14 +80,14 @@ export default function Dashboard() {
         getStreak(),
         getSubscription(),
       ])
-      const sessionsToday = await getSessionsUsedToday()
+      const sessionsUsed = await getSessionsUsed()
       setData({
         patientProgress,
         ieltsProgress,
         tutorProgress,
         streak,
         plan: sub.plan,
-        sessionsToday,
+        sessionsUsed,
       })
       setLoading(false)
     }
@@ -96,7 +96,7 @@ export default function Dashboard() {
 
   if (loading || !data) return <LoadingSkeleton />
 
-  const { patientProgress, ieltsProgress, tutorProgress, streak, plan, sessionsToday } = data
+  const { patientProgress, ieltsProgress, tutorProgress, streak, plan, sessionsUsed } = data
   const firstName = user?.user_metadata?.full_name?.split(' ')[0] || 'there'
   const totalScenarios = scenarios.length
 
@@ -110,7 +110,7 @@ export default function Dashboard() {
   // Merge all results for recent activity
   const allResults = [
     ...patientProgress.map(r => ({ ...r, product: 'NovaPatient' })),
-    ...ieltsProgress.map(r => ({ ...r, product: 'Nova IELTS' })),
+    ...ieltsProgress.map(r => ({ ...r, product: 'NovateExaminer' })),
     ...tutorProgress.map(r => ({ ...r, product: 'Novatutor' })),
   ]
     .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
@@ -127,8 +127,8 @@ export default function Dashboard() {
     return { domain, label: DOMAIN_LABELS[domain], avg, count: scores.length }
   })
 
-  const sessionLimit = 3
-  const sessionPct = plan === 'pro' ? 100 : Math.min(100, (sessionsToday / sessionLimit) * 100)
+  const isPaid = plan !== 'free'
+  const sessionPct = isPaid ? 100 : Math.min(100, (sessionsUsed / FREE_LIMIT) * 100)
 
   return (
     <div className="max-w-5xl mx-auto py-10 px-5 animate-in">
@@ -160,47 +160,47 @@ export default function Dashboard() {
         </div>
         <div className="glass-card text-center py-4!">
           <span className={`inline-flex items-center gap-1.5 text-sm font-bold px-3 py-1 rounded-full ${
-            plan === 'pro'
+            plan !== 'free'
               ? 'bg-violet-500/10 text-violet-500'
               : 'bg-zinc-500/10 text-secondary'
           }`}>
-            {plan === 'pro' ? 'Pro' : 'Free'}
+            {plan === 'combo' ? 'Combo' : plan === 'single' ? 'Single' : 'Free'}
           </span>
           <p className="text-xs text-secondary font-semibold uppercase tracking-wider mt-2">Current Plan</p>
         </div>
       </div>
 
-      {/* Sessions used today */}
+      {/* Sessions */}
       <div className="glass-card mb-8">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-primary">Sessions Today</h3>
+          <h3 className="text-sm font-bold text-primary">Free Sessions</h3>
           <span className="text-sm font-bold tabular-nums text-primary">
-            {plan === 'pro' ? (
+            {isPaid ? (
               <span className="text-violet-500">Unlimited</span>
             ) : (
-              <>{sessionsToday}<span className="text-secondary font-normal">/{sessionLimit}</span></>
+              <>{sessionsUsed}<span className="text-secondary font-normal">/{FREE_LIMIT}</span></>
             )}
           </span>
         </div>
         <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              plan === 'pro'
+              isPaid
                 ? 'bg-violet-500'
-                : sessionsToday >= sessionLimit
+                : sessionsUsed >= FREE_LIMIT
                   ? 'bg-red-500'
                   : 'bg-emerald-500'
             }`}
             style={{ width: `${sessionPct}%` }}
           />
         </div>
-        {plan === 'free' && sessionsToday >= sessionLimit && (
+        {plan === 'free' && sessionsUsed >= FREE_LIMIT && (
           <p className="text-xs text-secondary mt-2">
-            Daily limit reached.{' '}
+            Free sessions used up.{' '}
             <Link to="/pricing" className="text-violet-500 font-semibold hover:underline">
-              Upgrade to Pro
+              Subscribe
             </Link>{' '}
-            for unlimited sessions.
+            for unlimited practice.
           </p>
         )}
       </div>
@@ -248,8 +248,8 @@ export default function Dashboard() {
           </div>
         </Link>
 
-        {/* Nova IELTS */}
-        <Link to="/nova-ielts" className="glass-card group hover:shadow-lg transition-shadow duration-300 hover:shadow-violet-500/10">
+        {/* NovateExaminer */}
+        <Link to="/novate-examiner" className="glass-card group hover:shadow-lg transition-shadow duration-300 hover:shadow-violet-500/10">
           <div className="flex items-center gap-3 mb-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-linear-to-br from-violet-500 to-purple-400 text-white shadow-lg">
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -257,7 +257,7 @@ export default function Dashboard() {
               </svg>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-primary">Nova IELTS</h3>
+              <h3 className="text-sm font-bold text-primary">NovateExaminer</h3>
               <span className="text-xs text-secondary">Exam Prep</span>
             </div>
           </div>

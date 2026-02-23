@@ -48,8 +48,8 @@ const products = [
     color: 'from-blue-500 to-cyan-500',
   },
   {
-    to: '/nova-ielts',
-    name: 'Nova IELTS',
+    to: '/novate-examiner',
+    name: 'NovateExaminer',
     tagline: 'Speaking Exam Prep',
     desc: 'Full 3-part mock tests with band scoring and targeted feedback. Run them as many times as you need.',
     color: 'from-violet-500 to-purple-500',

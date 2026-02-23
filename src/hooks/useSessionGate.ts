@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getSubscription, canStartSession, consumeSession, getSessionsUsedToday, getSessionsRemaining, type Plan } from '../lib/subscription'
+import { getSubscription, canStartSession, consumeSession, getSessionsUsed, getSessionsRemaining, type PlanType } from '../lib/subscription'
 
 export function useSessionGate() {
-  const [plan, setPlan] = useState<Plan>('free')
+  const [plan, setPlan] = useState<PlanType>('free')
   const [blocked, setBlocked] = useState(false)
   const [sessionsUsed, setSessionsUsed] = useState(0)
   const [remaining, setRemaining] = useState(3)
@@ -12,7 +12,7 @@ export function useSessionGate() {
     getSubscription().then(async (sub) => {
       setPlan(sub.plan)
       const [used, rem] = await Promise.all([
-        getSessionsUsedToday(),
+        getSessionsUsed(),
         getSessionsRemaining(sub.plan),
       ])
       setSessionsUsed(used)
@@ -29,7 +29,7 @@ export function useSessionGate() {
     }
     await consumeSession()
     const [used, rem] = await Promise.all([
-      getSessionsUsedToday(),
+      getSessionsUsed(),
       getSessionsRemaining(plan),
     ])
     setSessionsUsed(used)
