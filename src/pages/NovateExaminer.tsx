@@ -503,7 +503,10 @@ export default function NovateExaminer() {
                 title={isListening ? 'Stop recording' : 'Start recording'}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-14 0m7 0V3m0 8v0m-4 4h8m-4 0v4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="22" strokeLinecap="round" />
+                  <line x1="8" y1="22" x2="16" y2="22" strokeLinecap="round" />
                 </svg>
               </button>
             )}
