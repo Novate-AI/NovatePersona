@@ -44,11 +44,3 @@ export interface IELTSBandFeedback {
   overall: number
   comments: string
 }
-
-export interface MedicaCase {
-  id: string
-  chiefComplaint: string
-  age?: number
-  gender?: string
-  hints?: string[]
-}

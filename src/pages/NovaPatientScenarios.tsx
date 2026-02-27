@@ -58,7 +58,22 @@ export default function NovaPatientScenarios() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Fixed Begin bar at bottom of screen when a card is selected — no scroll needed */}
+      {selected && (
+        <div className="fixed bottom-0 left-0 right-0 z-10 border-t flex items-center justify-center py-3 px-4 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+          <button
+            onClick={async () => { if (!(await tryStartSession())) return; navigate(`/nova-patient/chat?scenario=${selected}`); }}
+            className="btn-primary px-8 py-3 text-base inline-flex items-center gap-2"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            </svg>
+            Begin Station
+          </button>
+        </div>
+      )}
+
+      <div className={`flex-1 overflow-y-auto ${selected ? 'pb-20' : ''}`}>
       <div className="max-w-5xl mx-auto py-8 px-5 animate-in">
 
       {/* Header */}
@@ -124,7 +139,7 @@ export default function NovaPatientScenarios() {
       )}
 
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         {scenarios.map((s) => {
           const diff = DIFF_STYLE[s.patient.difficulty] || DIFF_STYLE.Beginner;
           const best = progress.find((p) => p.scenarioCode === s.code);
@@ -170,8 +185,8 @@ export default function NovaPatientScenarios() {
         })}
       </div>
 
-      {/* Action */}
-      <div className="flex flex-col items-center gap-3 pb-12">
+      {/* Begin Station — right below grid so no scroll needed */}
+      <div className="flex flex-col items-center gap-2 mb-8">
         <button
           disabled={!selected}
           onClick={async () => { if (!selected) return; if (!(await tryStartSession())) return; navigate(`/nova-patient/chat?scenario=${selected}`); }}

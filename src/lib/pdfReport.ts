@@ -133,3 +133,97 @@ export function generateScoreReport(
   win.document.write(html)
   win.document.close()
 }
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+export type SimpleChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export function generateTranscriptReport(title: string, messages: SimpleChatMessage[]): void {
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  const rows = messages
+    .map((m) => {
+      const who = m.role === 'user' ? 'You' : 'Tom'
+      return `
+        <div class="row">
+          <div class="who ${m.role}">${escapeHtml(who)}</div>
+          <div class="msg">${escapeHtml(m.content)}</div>
+        </div>
+      `
+    })
+    .join('')
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .no-print { display:none !important; } }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#111827; padding: 40px; max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 20px; font-weight: 800; margin: 0 0 6px; }
+    .meta { font-size: 12px; color:#6b7280; margin-bottom: 18px; }
+    .print-btn { display:block; margin: 0 auto 22px; padding: 10px 24px; font-size: 13px; font-weight: 700; background:#111; color:#fff; border:none; border-radius: 10px; cursor:pointer; }
+    .print-btn:hover { background:#1f2937; }
+    .row { display:grid; grid-template-columns: 90px 1fr; gap: 14px; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+    .who { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; padding-top: 2px; }
+    .who.user { color:#0ea5e9; }
+    .who.assistant { color:#6b7280; }
+    .msg { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">Download PDF</button>
+  <h1>${escapeHtml(title)}</h1>
+  <div class="meta">Generated on ${escapeHtml(date)}</div>
+  ${rows || '<div class="meta">No messages.</div>'}
+</body>
+</html>`
+
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+}
+
+export function generatePlainTextReport(title: string, body: string): void {
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .no-print { display:none !important; } }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#111827; padding: 40px; max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 20px; font-weight: 800; margin: 0 0 6px; }
+    .meta { font-size: 12px; color:#6b7280; margin-bottom: 18px; }
+    .print-btn { display:block; margin: 0 auto 22px; padding: 10px 24px; font-size: 13px; font-weight: 700; background:#111; color:#fff; border:none; border-radius: 10px; cursor:pointer; }
+    .print-btn:hover { background:#1f2937; }
+    pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">Download PDF</button>
+  <h1>${escapeHtml(title)}</h1>
+  <div class="meta">Generated on ${escapeHtml(date)}</div>
+  <pre>${escapeHtml(body || '')}</pre>
+</body>
+</html>`
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+}

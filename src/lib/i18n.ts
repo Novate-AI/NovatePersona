@@ -211,10 +211,6 @@ export function setUILocale(locale: UILocale) {
   currentLocale = locale
 }
 
-export function getUILocale(): UILocale {
-  return currentLocale
-}
-
 export function t(key: string, vars?: Record<string, string>): string {
   const dict = translations[currentLocale] || translations.en
   let str = dict[key] || translations.en[key] || key

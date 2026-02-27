@@ -43,18 +43,19 @@ export default function NovaPatientChat() {
   const { isListening, transcript, start: startListening, stop: stopListening, setTranscript } = useSpeechRecognition();
   const { speak, stop: stopSpeaking, isSpeaking } = useSpeechSynthesis();
 
+  const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
     if (!scenario) return;
     const saved = loadSession();
     if (saved && saved.scenarioCode === scenarioCode) {
       setMessages(saved.messages as Msg[]);
-      // RegExps don't survive JSON serialization — rebuild from scratch and merge `covered` state
       const savedCovered = new Set(
         (saved.checklist as ChecklistCategory[]).filter(c => c.covered).map(c => c.id)
       );
       setChecklist(createChecklist().map(c => savedCovered.has(c.id) ? { ...c, covered: true } : c));
       setInitialDuration(saved.remainingSeconds);
     }
+    setSessionChecked(true);
   }, [scenario, scenarioCode]);
 
   useEffect(() => {
@@ -74,6 +75,32 @@ export default function NovaPatientChat() {
   useEffect(() => {
     if (isSpeaking && isListening) stopListening();
   }, [isSpeaking, isListening, stopListening]);
+
+  // First-time open: fetch and speak the patient's initial greeting so there is voice immediately
+  const initialGreetingSent = useRef(false);
+  useEffect(() => {
+    if (!sessionChecked || phase !== "active" || !scenarioCode || !scenario || messages.length > 0 || initialGreetingSent.current) return;
+    initialGreetingSent.current = true;
+    let assistantSoFar = "";
+    setIsLoading(true);
+    streamChat({
+      messages: [],
+      scenario: scenarioCode,
+      onDelta: (chunk) => {
+        assistantSoFar += chunk;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+          return [...prev, { role: "assistant", content: assistantSoFar }];
+        });
+      },
+      onDone: () => {
+        setIsLoading(false);
+        if (assistantSoFar.trim()) speak(assistantSoFar);
+      },
+      onError: () => { setIsLoading(false); initialGreetingSent.current = false; },
+    }).catch(() => { setIsLoading(false); initialGreetingSent.current = false; });
+  }, [sessionChecked, phase, scenarioCode, scenario, messages.length, speak]);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || isLoading || !scenario || phase !== "active") return;

@@ -1,9 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
 export interface UseSpeechRecognitionOptions {
-  onResult?: (transcript: string, isFinal: boolean) => void
-  onError?: (error: string) => void
+  /** BCP-47 language code for recognition (e.g. "en-US", "en-GB") */
+  lang?: string
+  /** Alias for lang — kept for backward compatibility */
   language?: string
+  /** Called with the final recognised transcript */
+  onResult?: (transcript: string) => void
+  onError?: (error: string) => void
 }
 
 export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) {
@@ -11,6 +15,8 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) 
   const [transcript, setTranscript] = useState('')
   const [supported, setSupported] = useState(false)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const optionsRef = useRef(options)
+  optionsRef.current = options
 
   useEffect(() => {
     const w = window as Window & {
@@ -20,56 +26,57 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) 
     setSupported(!!(w.SpeechRecognition ?? w.webkitSpeechRecognition))
   }, [])
 
-  const checkSupport = useCallback(() => {
+  const start = useCallback(() => {
     const w = window as Window & {
-      SpeechRecognition?: typeof SpeechRecognition
-      webkitSpeechRecognition?: typeof SpeechRecognition
+      SpeechRecognition?: new () => SpeechRecognition
+      webkitSpeechRecognition?: new () => SpeechRecognition
     }
     const R = w.SpeechRecognition ?? w.webkitSpeechRecognition
-    setSupported(!!R)
-    return !!R
-  }, [])
+    if (!R) {
+      optionsRef.current.onError?.('Speech recognition not supported in this browser.')
+      return
+    }
 
-  const start = useCallback(
-    (lang?: string) => {
-      const w = window as Window & {
-        SpeechRecognition?: new () => SpeechRecognition
-        webkitSpeechRecognition?: new () => SpeechRecognition
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+
+    const recognition = new R()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = optionsRef.current.lang ?? optionsRef.current.language ?? 'en-US'
+
+    recognition.onresult = (e: SpeechRecognitionEvent) => {
+      let finalTranscript = ''
+      let interimTranscript = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        const t = r[0].transcript
+        if (r.isFinal) finalTranscript += t
+        else interimTranscript += t
       }
-      const R = w.SpeechRecognition ?? w.webkitSpeechRecognition
-      if (!R) {
-        options.onError?.('Speech recognition not supported in this browser.')
-        return
+      const combined = finalTranscript + interimTranscript
+      setTranscript(combined)
+      if (finalTranscript) {
+        optionsRef.current.onResult?.(finalTranscript.trim())
       }
-      const recognition = new R()
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.lang = lang ?? options.language ?? 'en-US'
-      recognition.onresult = (e: SpeechRecognitionEvent) => {
-        let finalTranscript = ''
-        let interimTranscript = ''
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const r = e.results[i]
-          const t = r[0].transcript
-          if (r.isFinal) finalTranscript += t
-          else interimTranscript += t
-        }
-        const full = (finalTranscript || transcript) + interimTranscript
-        setTranscript(full)
-        options.onResult?.(full, !!finalTranscript)
+    }
+
+    recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        optionsRef.current.onError?.(e.error)
       }
-      recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
-        options.onError?.(e.error)
-      }
-      recognition.onend = () => {
-        setIsListening(false)
-      }
-      recognitionRef.current = recognition
-      recognition.start()
-      setIsListening(true)
-    },
-    [options, transcript],
-  )
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsListening(true)
+  }, [])
 
   const stop = useCallback(() => {
     if (recognitionRef.current) {
@@ -79,5 +86,15 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) 
     setIsListening(false)
   }, [])
 
-  return { isListening, transcript, supported, checkSupport, start, stop, setTranscript }
+  return {
+    isListening,
+    transcript,
+    /** Whether speech recognition is supported in this browser */
+    supported,
+    /** Alias for supported — used by newer components */
+    isSupported: supported,
+    start,
+    stop,
+    setTranscript,
+  }
 }

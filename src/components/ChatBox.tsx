@@ -1,11 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { ChatMessage as ChatMessageType } from '../types'
-import { speak as ttsSpeak } from '../lib/tts'
-
-function speakWithBrowser(text: string, lang: string = 'en'): void {
-  if (!text.trim()) return
-  ttsSpeak(text.trim(), lang)
-}
+import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis'
 
 function MicIcon({ className }: { className?: string }) {
   return (
@@ -62,8 +57,8 @@ export default function ChatBox({
 }: ChatBoxProps) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
-
   const lastSpokenIdRef = useRef<string | null>(null)
+  const { speak } = useSpeechSynthesis(language === 'en' ? 'en-GB' : language)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -74,17 +69,14 @@ export default function ChatBox({
     if (transcript) setInput(transcript)
   }, [transcript])
 
-  /* Speak every new assistant message: use browser voice */
+  /* Speak every new assistant message via TTS */
   useEffect(() => {
     const last = messages.filter((m) => m.role === 'assistant').pop()
     if (!last || last.id === lastSpokenIdRef.current) return
     lastSpokenIdRef.current = last.id
-
-    const text = last.content
-    if (!text.trim()) return
-
-    speakWithBrowser(text, language)
-  }, [messages, language])
+    if (!last.content.trim()) return
+    speak(last.content)
+  }, [messages, speak])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
