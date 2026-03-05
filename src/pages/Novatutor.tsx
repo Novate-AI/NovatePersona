@@ -104,8 +104,11 @@ export default function Novatutor() {
     if (parts.length === 0) return
     if (parts.length === 1) {
       const s = parts[0].trim()
-      if (s) speakQueued(s)
-      spokenUpToRef.current += remaining.length
+      // Only queue when we have a complete sentence (ends with . ! ?) — avoid word-by-word TTS
+      if (s && /[.!?]$/.test(s)) {
+        speakQueued(s)
+        spokenUpToRef.current += remaining.length
+      }
       return
     }
     let consumedLength = 0

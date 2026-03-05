@@ -102,9 +102,12 @@ export function parseAssistantMessage(content: string): ParsedMessage {
     }
   }
 
-  // Strip leftover emojis from mainContent
+  // Strip leftover emojis and markdown dialogue labels (e.g. **You:** **Barista:**) for clean display and speech
   mainContent = cleanLines.join("\n")
     .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}]/gu, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")  // **bold** → bold (avoids TTS saying "asterisk asterisk")
+    .replace(/^---\s*$/gm, "")           // remove --- separators
+    .replace(/\n{3,}/g, "\n\n")         // collapse excessive newlines
     .trim();
 
   return { mainContent, translation, transliteration, suggestions, corrections };
@@ -112,5 +115,11 @@ export function parseAssistantMessage(content: string): ParsedMessage {
 
 export function getSpeakableText(content: string): string {
   const { mainContent } = parseAssistantMessage(content);
-  return mainContent;
+  // For speech: strip dialogue labels (You:, Barista:, etc.) so we speak only the actual dialogue
+  return mainContent
+    .split("\n")
+    .map((line) => line.replace(/^(You|Barista|Customer|Waiter|Server|Clerk):\s*/i, "").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
