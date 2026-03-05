@@ -16,6 +16,7 @@ const translations: Record<UILocale, Record<string, string>> = {
     'tutor.record': 'Record',
     'tutor.send': 'Send',
     'tutor.listen': 'Listen',
+    'tutor.start': 'Start practice',
     'tutor.speakerActive': 'Speaker active — mic paused',
     'tutor.starter.coffee': 'Order coffee at a café',
     'tutor.starter.directions': 'Ask for directions',

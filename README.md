@@ -6,7 +6,7 @@
 
 | Partner | Description |
 |--------|-------------|
-| **Novatutor** | AI language tutor (persona: Tom Holland). Practice any of 10 languages with CEFR level adaptation (A1–C2), real-time corrections, translations, transliterations, and suggested replies. |
+| **Novatutor** | AI language tutor (persona: Novate Abby). Practice any of 10 languages with CEFR level adaptation (A1–C2), real-time corrections, translations, transliterations, and suggested replies. |
 | **Nova IELTS** | AI IELTS Speaking examiner. Full 3-part test with timed responses, auto-activated microphone, and detailed band-score feedback (fluency, vocabulary, grammar, pronunciation). |
 | **NovaPatient** | AI patient simulator for medical students to practice clinical history-taking. |
 

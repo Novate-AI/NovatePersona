@@ -23,7 +23,10 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) 
       SpeechRecognition?: typeof SpeechRecognition
       webkitSpeechRecognition?: typeof SpeechRecognition
     }
-    setSupported(!!(w.SpeechRecognition ?? w.webkitSpeechRecognition))
+    const hasAPI = !!(w.SpeechRecognition ?? w.webkitSpeechRecognition)
+    // Speech recognition requires secure context (HTTPS or localhost) in Chrome/Edge
+    const secure = typeof w.isSecureContext === 'boolean' ? w.isSecureContext : (w.location?.protocol === 'https:' || w.location?.hostname === 'localhost' || w.location?.hostname === '127.0.0.1')
+    setSupported(hasAPI && secure)
   }, [])
 
   const start = useCallback(() => {

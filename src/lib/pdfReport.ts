@@ -153,7 +153,7 @@ export function generateTranscriptReport(title: string, messages: SimpleChatMess
 
   const rows = messages
     .map((m) => {
-      const who = m.role === 'user' ? 'You' : 'Tom'
+      const who = m.role === 'user' ? 'You' : 'Abby'
       return `
         <div class="row">
           <div class="who ${m.role}">${escapeHtml(who)}</div>

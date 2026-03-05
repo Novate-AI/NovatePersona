@@ -60,7 +60,9 @@ export default function Novatutor() {
     return `${language}-${language.toUpperCase()}`
   }, [language])
 
-  const { isSpeaking, speak, speakQueued, stop: stopSpeaking } = useSpeechSynthesis(getLangSpeechCode())
+  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture } = useSpeechSynthesis(getLangSpeechCode())
+  const introTriggeredRef = useRef(false)
+  const resumeOnGestureRef = useRef(false)
 
   const onVoiceResult = useCallback((transcript: string) => {
     sendMessage(transcript)
@@ -90,35 +92,36 @@ export default function Novatutor() {
     setNativeLanguage(null)
     setAutoIntroSent(false)
     sessionConsumedRef.current = false
+    introTriggeredRef.current = false
   }, [language, cefrLevel])
 
-  // Auto-intro on mount and when language/level resets
-  useEffect(() => {
-    if (!autoIntroSent) {
-      setAutoIntroSent(true)
-      triggerIntro()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoIntroSent])
-
-  // Sentence chunking: queue complete sentences as they stream
+  // Speak each sentence as soon as it's complete for more immediate response
+  const SENTENCES_PER_CHUNK = 1
   const checkAndQueueSentences = useCallback((fullText: string) => {
     const speakable = getSpeakableText(fullText)
     const remaining = speakable.slice(spokenUpToRef.current)
     const parts = remaining.split(/(?<=[.!?])\s+/)
-    if (parts.length <= 1) return
+    if (parts.length === 0) return
+    if (parts.length === 1) {
+      const s = parts[0].trim()
+      if (s) speakQueued(s)
+      spokenUpToRef.current += remaining.length
+      return
+    }
     let consumedLength = 0
+    const batch: string[] = []
     for (let i = 0; i < parts.length - 1; i++) {
       const sentence = parts[i].trim()
-      if (sentence) speakQueued(sentence)
-      // Advance by exact length of this part + the delimiter (so we don't skip or repeat when delimiter is not a single space)
+      if (sentence) batch.push(sentence)
       const nextPartStart = remaining.indexOf(parts[i + 1], consumedLength)
-      if (nextPartStart >= 0) {
-        consumedLength = nextPartStart
-      } else {
-        consumedLength += parts[i].length + 1
+      if (nextPartStart >= 0) consumedLength = nextPartStart
+      else consumedLength += parts[i].length + 1
+      if (batch.length >= SENTENCES_PER_CHUNK) {
+        speakQueued(batch.join(' '))
+        batch.length = 0
       }
     }
+    if (batch.length > 0) speakQueued(batch.join(' '))
     spokenUpToRef.current += consumedLength
   }, [speakQueued])
 
@@ -156,7 +159,8 @@ export default function Novatutor() {
           const content = parsed.choices?.[0]?.delta?.content as string | undefined
           if (content) {
             assistantSoFar += content
-            const snapshot = assistantSoFar
+            // Ensure Novate Abby persona (backend may still return old name)
+            const snapshot = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
             setMessages(prev => {
               const last = prev[prev.length - 1]
               if (last?.role === 'assistant') {
@@ -194,18 +198,48 @@ export default function Novatutor() {
       })
       if (!resp.ok || !resp.body) throw new Error('Failed to connect')
       assistantSoFar = await processStream(resp.body, assistantSoFar)
+      assistantSoFar = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
       flushRemainingSpeech(assistantSoFar)
     } catch (e) {
       console.error(e)
-      setMessages([{ id: 'welcome', role: 'assistant', content: "Hey! Tom here. Ready to practice? Pick a topic or just start chatting.", timestamp: Date.now() }])
+      setMessages([{ id: 'welcome', role: 'assistant', content: "Hey! Novate Abby here. Ready to practice? Pick a topic or just start chatting.", timestamp: Date.now() }])
     } finally {
       setIsLoading(false)
     }
   }, [language, cefrLevel, effectiveNativeLanguage, stopSpeaking, processStream, flushRemainingSpeech])
 
+  // Do NOT auto-trigger intro: browsers block speech until user gesture. User must click "Start practice" so the greeting is voiced.
+
+  // Resume any queued speech after first user gesture (if autoplay was blocked)
+  useEffect(() => {
+    if (resumeOnGestureRef.current || typeof window === 'undefined') return
+    const onGesture = () => {
+      if (resumeOnGestureRef.current) return
+      resumeOnGestureRef.current = true
+      unlockAudio?.()
+      resumeFromUserGesture?.()
+      window.removeEventListener('click', onGesture, true)
+      window.removeEventListener('touchstart', onGesture, true)
+    }
+    window.addEventListener('click', onGesture, true)
+    window.addEventListener('touchstart', onGesture, true)
+    return () => {
+      window.removeEventListener('click', onGesture, true)
+      window.removeEventListener('touchstart', onGesture, true)
+    }
+  }, [unlockAudio, resumeFromUserGesture])
+
+  const handleStartPractice = useCallback(() => {
+    unlockAudio?.()
+    resumeFromUserGesture?.()
+    setAutoIntroSent(true)
+    triggerIntro()
+  }, [triggerIntro, unlockAudio, resumeFromUserGesture])
+
   const sendMessage = useCallback(async (content: string) => {
     const text = content.trim()
     if (!text || isLoadingRef.current) return
+    unlockAudio?.()
     if (!sessionConsumedRef.current) {
       if (!(await tryStartSession())) return
       sessionConsumedRef.current = true
@@ -232,6 +266,7 @@ export default function Novatutor() {
       if (resp.status === 402) { console.warn('Credits needed'); setIsLoading(false); return }
       if (!resp.ok || !resp.body) throw new Error('Failed to connect')
       assistantSoFar = await processStream(resp.body, assistantSoFar)
+      assistantSoFar = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
       flushRemainingSpeech(assistantSoFar)
 
       // If user typed their native language explicitly, capture it once
@@ -245,7 +280,7 @@ export default function Novatutor() {
     } finally {
       setIsLoading(false)
     }
-  }, [messages, language, cefrLevel, nativeLanguage, effectiveNativeLanguage, showSuggestions, isListening, stopListening, stopSpeaking, tryStartSession, processStream, flushRemainingSpeech])
+  }, [messages, language, cefrLevel, nativeLanguage, effectiveNativeLanguage, showSuggestions, isListening, stopListening, stopSpeaking, tryStartSession, processStream, flushRemainingSpeech, unlockAudio])
 
   const handleSend = useCallback(() => { sendMessage(input) }, [input, sendMessage])
   const handleKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
@@ -365,7 +400,7 @@ export default function Novatutor() {
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {messages.map(m => (
                 <div key={m.id} className="flex gap-2">
-                  <span className={`text-xs font-bold shrink-0 pt-0.5 w-20 ${m.role === 'user' ? 'text-brand-500' : 'text-secondary'}`}>{m.role === 'user' ? 'You' : 'Tom'}</span>
+                  <span className={`text-xs font-bold shrink-0 pt-0.5 w-20 ${m.role === 'user' ? 'text-brand-500' : 'text-secondary'}`}>{m.role === 'user' ? 'You' : 'Abby'}</span>
                   <p className="text-sm text-primary leading-relaxed">{m.content}</p>
                 </div>
               ))}
@@ -465,13 +500,26 @@ export default function Novatutor() {
       </div>
 
       {/* Chat */}
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto px-4 py-5">
           <div className="max-w-2xl mx-auto space-y-4">
-            {messages.length === 0 && !isLoading && (
+            {messages.length === 0 && !autoIntroSent && (
+              <div className="flex flex-col items-center justify-center py-16 gap-6">
+                <p className="text-sm text-secondary text-center">Click below to hear Abby greet you. (Browsers require a click before playing voice.)</p>
+                <button
+                  type="button"
+                  onClick={handleStartPractice}
+                  className="btn-primary px-6 py-3 text-base font-semibold"
+                >
+                  {t('tutor.start') || 'Start practice'}
+                </button>
+              </div>
+            )}
+            {messages.length === 0 && autoIntroSent && isLoading && (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
-                <p className="text-sm text-secondary animate-pulse">Connecting to Tom...</p>
+                <p className="text-sm text-secondary animate-pulse">Connecting to Novate Abby...</p>
               </div>
             )}
             {messages.map(m => {
@@ -577,20 +625,24 @@ export default function Novatutor() {
             </div>
           )}
           <div className="flex gap-2 items-end max-w-2xl mx-auto">
-            {micSupported && (
-              <button
-                onClick={toggleMic}
-                disabled={isSpeaking}
-                className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
-                  isListening ? 'bg-red-600 text-white animate-pulse'
-                  : isSpeaking ? 'opacity-30 cursor-not-allowed btn-secondary p-0!'
-                  : 'btn-secondary p-0!'
-                }`}
-                title={isListening ? t('tutor.stopSend') : isSpeaking ? t('tutor.speakerActive') : t('tutor.record')}
-              >
-                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" /><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" /></svg>
-              </button>
-            )}
+            <button
+              onClick={micSupported ? toggleMic : undefined}
+              disabled={!micSupported || isSpeaking}
+              className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-all relative ${
+                !micSupported ? 'opacity-50 cursor-not-allowed btn-secondary p-0!'
+                : isListening ? 'bg-red-600 text-white animate-pulse'
+                : isSpeaking ? 'opacity-30 cursor-not-allowed btn-secondary p-0!'
+                : 'btn-secondary p-0!'
+              }`}
+              title={!micSupported ? 'Voice input requires Chrome or Edge (and microphone permission)' : isListening ? t('tutor.stopSend') : isSpeaking ? t('tutor.speakerActive') : t('tutor.record')}
+            >
+              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" /><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" /></svg>
+              {!micSupported && (
+                <span className="absolute inset-0 flex items-center justify-center">
+                  <svg className="h-4 w-4 text-red-400 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                </span>
+              )}
+            </button>
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -610,6 +662,7 @@ export default function Novatutor() {
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>

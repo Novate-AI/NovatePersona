@@ -18,6 +18,10 @@ import ReactMarkdown from "react-markdown";
 
 const CONSULTATION_DURATION = 8 * 60;
 
+/** First sentence the patient says – spoken when user clicks Start so it's not blocked by autoplay. */
+const PATIENT_FIRST_LINE =
+  "Hello doctor. I've come in because I'm not feeling well. What would you like to know?";
+
 type Phase = "active" | "evaluating" | "feedback";
 
 export default function NovaPatientChat() {
@@ -38,10 +42,11 @@ export default function NovaPatientChat() {
   const [showChecklist, setShowChecklist] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [initialDuration, setInitialDuration] = useState(CONSULTATION_DURATION);
+  const [hasStartedConsultation, setHasStartedConsultation] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { isListening, transcript, start: startListening, stop: stopListening, setTranscript } = useSpeechRecognition();
-  const { speak, stop: stopSpeaking, isSpeaking } = useSpeechSynthesis();
+  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(undefined);
 
   const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
@@ -76,10 +81,10 @@ export default function NovaPatientChat() {
     if (isSpeaking && isListening) stopListening();
   }, [isSpeaking, isListening, stopListening]);
 
-  // First-time open: fetch and speak the patient's initial greeting so there is voice immediately
+  // Run initial greeting stream only after user clicks Start (so first TTS is after a gesture)
   const initialGreetingSent = useRef(false);
   useEffect(() => {
-    if (!sessionChecked || phase !== "active" || !scenarioCode || !scenario || messages.length > 0 || initialGreetingSent.current) return;
+    if (!hasStartedConsultation || !sessionChecked || phase !== "active" || !scenarioCode || !scenario || messages.length > 0 || initialGreetingSent.current) return;
     initialGreetingSent.current = true;
     let assistantSoFar = "";
     setIsLoading(true);
@@ -96,14 +101,15 @@ export default function NovaPatientChat() {
       },
       onDone: () => {
         setIsLoading(false);
-        if (assistantSoFar.trim()) speak(assistantSoFar);
+        // First sentence already spoken when they clicked Start; don't speak again here
       },
       onError: () => { setIsLoading(false); initialGreetingSent.current = false; },
     }).catch(() => { setIsLoading(false); initialGreetingSent.current = false; });
-  }, [sessionChecked, phase, scenarioCode, scenario, messages.length, speak]);
+  }, [hasStartedConsultation, sessionChecked, phase, scenarioCode, scenario, messages.length]);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || isLoading || !scenario || phase !== "active") return;
+    unlockAudio?.();
     const userMsg: Msg = { role: "user", content: text.trim() };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
@@ -113,6 +119,7 @@ export default function NovaPatientChat() {
     setChecklist(prev => updateChecklist(prev, text));
 
     let assistantSoFar = "";
+    let spokenUpTo = 0;
     const allMessages = [...messages, userMsg];
 
     try {
@@ -126,15 +133,24 @@ export default function NovaPatientChat() {
             if (last?.role === "assistant") return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantSoFar } : m);
             return [...prev, { role: "assistant", content: assistantSoFar }];
           });
+          // Speak each sentence as it completes so first speech is closer to user gesture (helps browser autoplay)
+          if (assistantSoFar.length > spokenUpTo && /[.!?]\s*$/.test(assistantSoFar)) {
+            const tail = assistantSoFar.slice(spokenUpTo).trim();
+            if (tail) {
+              speakQueued(tail);
+              spokenUpTo = assistantSoFar.length;
+            }
+          }
         },
         onDone: () => {
           setIsLoading(false);
-          if (assistantSoFar) speak(assistantSoFar);
+          const remainder = assistantSoFar.slice(spokenUpTo).trim();
+          if (remainder) speakQueued(remainder);
         },
         onError: (err) => { setIsLoading(false); setError(err); },
       });
     } catch { setIsLoading(false); setError("Connection error. Please try again."); }
-  }, [isLoading, messages, scenario, scenarioCode, setTranscript, speak, phase]);
+  }, [isLoading, messages, scenario, scenarioCode, setTranscript, speak, speakQueued, phase]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } };
 
@@ -315,13 +331,30 @@ export default function NovaPatientChat() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
-            {/* Welcome */}
-            <div className="flex gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
-              <div className="rounded-xl rounded-tl-none px-4 py-3 max-w-[80%] text-sm" style={{ background: 'var(--subtle-bg)' }}>
-                <p className="text-primary text-sm">Hello doctor. I&apos;ve come in because I&apos;m not feeling well. What would you like to know?</p>
+            {/* Welcome: show first line + Start button when no messages yet; first sentence plays after click */}
+            {messages.length === 0 && (
+              <div className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
+                <div className="rounded-xl rounded-tl-none px-4 py-3 max-w-[80%] text-sm space-y-3" style={{ background: 'var(--subtle-bg)' }}>
+                  <p className="text-primary text-sm">{PATIENT_FIRST_LINE}</p>
+                  {!hasStartedConsultation ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        unlockAudio?.();
+                        speak(PATIENT_FIRST_LINE);
+                        setHasStartedConsultation(true);
+                      }}
+                      className="text-sm font-semibold text-emerald-500 hover:text-emerald-400 focus:outline-none focus:underline"
+                    >
+                      Hear patient speak
+                    </button>
+                  ) : isLoading ? (
+                    <div className="flex gap-1"><span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: "0ms" }} /><span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: "150ms" }} /><span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: "300ms" }} /></div>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            )}
 
             {messages.map((m, i) => (
               <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : ""}`}>

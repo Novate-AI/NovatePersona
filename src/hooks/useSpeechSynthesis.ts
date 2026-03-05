@@ -1,37 +1,28 @@
 import { useState, useCallback, useRef } from "react";
 
-/**
- * Browser-only speech synthesis. Uses the best available voice for the language.
- * No backend TTS; uses window.speechSynthesis with a preferred voice when possible.
- */
+/** Speech synthesis using the browser's built-in Web Speech API. */
+
+/** Minimal silent WAV to unlock audio in browsers that require a user gesture before play(). */
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+
+let audioUnlocked = false;
+/** Call from a user gesture (e.g. Start button click) so the first TTS play() is not blocked by autoplay. */
+function unlockAudio() {
+  if (audioUnlocked || typeof window === "undefined") return;
+  audioUnlocked = true;
+  const a = new Audio(SILENT_WAV);
+  a.volume = 0;
+  a.play().catch(() => {});
+}
+
 export function useSpeechSynthesis(lang = "en-GB") {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const queueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
 
   const isSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
-
-  const getBestVoice = useCallback((langCode: string): SpeechSynthesisVoice | null => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return null;
-    let voices = window.speechSynthesis.getVoices();
-    if (!voices.length && typeof window !== "undefined") {
-      window.speechSynthesis.getVoices();
-      voices = window.speechSynthesis.getVoices();
-    }
-    if (!voices.length) return null;
-    const langPrefix = langCode.split("-")[0];
-    const preferred = voices.find(
-      (v) => v.lang.replace("_", "-").startsWith(langCode) && v.localService
-    );
-    if (preferred) return preferred;
-    const langMatch = voices.find((v) =>
-      v.lang.replace("_", "-").toLowerCase().startsWith(langPrefix)
-    );
-    if (langMatch) return langMatch;
-    const defaultVoice = voices.find((v) => v.default);
-    return defaultVoice || voices[0];
-  }, []);
+    typeof window !== "undefined" && typeof window.speechSynthesis !== "undefined";
 
   const playNext = useCallback(() => {
     if (queueRef.current.length === 0) {
@@ -50,7 +41,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
       .trim();
 
     if (!cleaned) {
-      playNext();
+      queueMicrotask(() => playNext());
       return;
     }
 
@@ -60,32 +51,21 @@ export function useSpeechSynthesis(lang = "en-GB") {
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleaned);
-    utterance.lang = lang;
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    utterance.volume = 1;
+    unlockAudio();
 
-    const voice = getBestVoice(lang);
-    if (voice) utterance.voice = voice;
+    const scheduleNext = () => queueMicrotask(() => playNext());
 
-    utterance.onend = () => {
-      setTimeout(() => playNext(), 80);
-    };
-    utterance.onerror = () => {
-      setTimeout(() => playNext(), 80);
-    };
-
-    window.speechSynthesis.speak(utterance);
-  }, [lang, getBestVoice]);
+    const u = new SpeechSynthesisUtterance(cleaned);
+    u.lang = lang || "en-GB";
+    u.onend = scheduleNext;
+    u.onerror = scheduleNext;
+    window.speechSynthesis.speak(u);
+  }, [lang]);
 
   const speakQueued = useCallback(
     (text: string) => {
       queueRef.current.push(text);
-      if (!isPlayingRef.current) {
-        playNext();
-      }
+      if (!isPlayingRef.current) playNext();
     },
     [playNext]
   );
@@ -94,7 +74,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
     queueRef.current = [];
     isPlayingRef.current = false;
     setIsSpeaking(false);
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
   }, []);
@@ -107,5 +87,20 @@ export function useSpeechSynthesis(lang = "en-GB") {
     [stop, speakQueued]
   );
 
-  return { isSpeaking, speak, speakQueued, stop, isSupported };
+  const resumeFromUserGesture = useCallback(() => {
+    unlockAudio();
+    if (queueRef.current.length > 0 && !isPlayingRef.current) playNext();
+  }, [playNext]);
+
+  return {
+    isSpeaking,
+    speak,
+    speakQueued,
+    stop,
+    isSupported,
+    unlockAudio,
+    resumeFromUserGesture,
+  };
 }
+
+export { unlockAudio };

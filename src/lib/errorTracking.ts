@@ -17,8 +17,3 @@ export function captureError(error: Error, context?: Record<string, unknown>) {
   if (!sentry) return
   sentry.captureException(error, { extra: context })
 }
-
-export function setUser(userId: string, email?: string) {
-  if (!sentry) return
-  sentry.setUser({ id: userId, email })
-}
