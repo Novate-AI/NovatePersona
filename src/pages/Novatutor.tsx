@@ -106,6 +106,7 @@ export default function Novatutor() {
       const s = parts[0].trim()
       // Only queue when we have a complete sentence (ends with . ! ?) — avoid word-by-word TTS
       if (s && /[.!?]$/.test(s)) {
+        console.log('[Novatutor] Queuing sentence:', s.slice(0, 60) + (s.length > 60 ? '...' : ''))
         speakQueued(s)
         spokenUpToRef.current += remaining.length
       }
@@ -120,11 +121,17 @@ export default function Novatutor() {
       if (nextPartStart >= 0) consumedLength = nextPartStart
       else consumedLength += parts[i].length + 1
       if (batch.length >= SENTENCES_PER_CHUNK) {
-        speakQueued(batch.join(' '))
+        const batchText = batch.join(' ')
+        console.log('[Novatutor] Queuing batch:', batchText.slice(0, 60) + (batchText.length > 60 ? '...' : ''))
+        speakQueued(batchText)
         batch.length = 0
       }
     }
-    if (batch.length > 0) speakQueued(batch.join(' '))
+    if (batch.length > 0) {
+      const batchText = batch.join(' ')
+      console.log('[Novatutor] Queuing final batch:', batchText.slice(0, 60) + (batchText.length > 60 ? '...' : ''))
+      speakQueued(batchText)
+    }
     spokenUpToRef.current += consumedLength
   }, [speakQueued])
 
@@ -132,6 +139,7 @@ export default function Novatutor() {
     const speakable = getSpeakableText(fullText)
     const remaining = speakable.slice(spokenUpToRef.current).trim()
     if (remaining) {
+      console.log('[Novatutor] Flush remaining speech:', remaining.slice(0, 60) + (remaining.length > 60 ? '...' : ''))
       speakQueued(remaining)
       spokenUpToRef.current = speakable.length
     }
@@ -164,6 +172,7 @@ export default function Novatutor() {
             assistantSoFar += content
             // Ensure Novate Abby persona (backend may still return old name)
             const snapshot = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
+            console.log('[Novatutor] Stream chunk, snapshot length:', snapshot.length, 'ends:', snapshot.slice(-30))
             setMessages(prev => {
               const last = prev[prev.length - 1]
               if (last?.role === 'assistant') {
@@ -189,6 +198,7 @@ export default function Novatutor() {
       : (nativeLanguage ?? (uiLocale !== language ? uiLocale : null))
 
   const triggerIntro = useCallback(async () => {
+    console.log('[Novatutor] triggerIntro started')
     setIsLoading(true)
     stopSpeaking()
     spokenUpToRef.current = 0
@@ -202,9 +212,10 @@ export default function Novatutor() {
       if (!resp.ok || !resp.body) throw new Error('Failed to connect')
       assistantSoFar = await processStream(resp.body, assistantSoFar)
       assistantSoFar = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
+      console.log('[Novatutor] Stream done, total length:', assistantSoFar.length)
       flushRemainingSpeech(assistantSoFar)
     } catch (e) {
-      console.error(e)
+      console.error('[Novatutor] triggerIntro failed:', e)
       setMessages([{ id: 'welcome', role: 'assistant', content: "Hey! Novate Abby here. Ready to practice? Pick a topic or just start chatting.", timestamp: Date.now() }])
     } finally {
       setIsLoading(false)
@@ -233,6 +244,7 @@ export default function Novatutor() {
   }, [unlockAudio, resumeFromUserGesture])
 
   const handleStartPractice = useCallback(() => {
+    console.log('[Novatutor] Start practice clicked')
     unlockAudio?.()
     resumeFromUserGesture?.()
     setAutoIntroSent(true)
