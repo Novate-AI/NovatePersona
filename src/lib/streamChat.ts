@@ -5,6 +5,8 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace('/api/chat', '') |
 interface StreamChatOpts {
   messages: Msg[];
   scenario: string;
+  /** Language code for patient dialogue (e.g. 'en', 'de', 'fr'). Default: 'en'. */
+  language?: string;
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (error: string) => void;
@@ -15,7 +17,7 @@ async function streamFromGroq(opts: StreamChatOpts): Promise<boolean> {
     const resp = await fetch(`${BACKEND_URL}/api/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: opts.messages, scenario: opts.scenario }),
+      body: JSON.stringify({ messages: opts.messages, scenario: opts.scenario, language: opts.language || "en" }),
     });
 
     if (!resp.ok || !resp.body) return false;

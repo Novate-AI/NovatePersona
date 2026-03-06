@@ -15,19 +15,6 @@ export const LANGUAGES = [
 
 export type MessageRole = 'user' | 'assistant' | 'system'
 
-export interface ChatMessage {
-  id: string
-  role: MessageRole
-  content: string
-  timestamp: number
-  meta?: {
-    correction?: string
-    translation?: string
-    transliteration?: string
-    suggestedReplies?: string[]
-  }
-}
-
 export interface IELTSPart {
   part: 1 | 2 | 3
   title: string

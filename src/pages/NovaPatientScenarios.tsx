@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { scenarios } from "../lib/scenarios";
+import { OSCE_LANGUAGES } from "./NovaPatientChat";
 import { getProgress, getStreak, isOnboarded, type ScenarioResult, type UserStreak } from "../lib/progress";
 import { getRecommendations } from "../lib/recommendations";
 import { useSessionGate } from "../hooks/useSessionGate";
@@ -23,8 +24,13 @@ const GRADE_STYLE: Record<string, string> = {
 };
 
 export default function NovaPatientScenarios() {
+  const [searchParams] = useSearchParams();
   const { blocked, sessionsUsed, remaining, dismissWall, tryStartSession } = useSessionGate();
   const [selected, setSelected] = useState<string | null>(null);
+  const [lang, setLang] = useState(() => {
+    const p = searchParams.get("lang");
+    return OSCE_LANGUAGES.some((l) => l.code === p) ? p! : "en";
+  });
   const [progress, setProgress] = useState<ScenarioResult[]>([]);
   const [streak, setStreak] = useState<UserStreak>({ currentStreak: 0, longestStreak: 0, lastPracticeDate: null, totalSessions: 0 });
   const [recs, setRecs] = useState<ReturnType<typeof getRecommendations>>([]);
@@ -39,6 +45,11 @@ export default function NovaPatientScenarios() {
     getStreak().then(setStreak);
     if (!isOnboarded()) setShowOnboarding(true);
   }, []);
+
+  useEffect(() => {
+    const p = searchParams.get("lang");
+    if (p && OSCE_LANGUAGES.some((l) => l.code === p)) setLang(p);
+  }, [searchParams]);
 
   const completedCount = progress.length;
 
@@ -60,9 +71,22 @@ export default function NovaPatientScenarios() {
 
       {/* Fixed Begin bar at bottom of screen when a card is selected — no scroll needed */}
       {selected && (
-        <div className="fixed bottom-0 left-0 right-0 z-10 border-t flex items-center justify-center py-3 px-4 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+        <div className="fixed bottom-0 left-0 right-0 z-10 border-t flex items-center justify-center gap-3 py-3 px-4 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+          <label className="flex items-center gap-2 text-sm text-secondary">
+            <span>Patient speaks:</span>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              className="rounded-lg border px-2.5 py-1.5 text-sm bg-transparent"
+              style={{ borderColor: 'var(--card-border)' }}
+            >
+              {OSCE_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.name}</option>
+              ))}
+            </select>
+          </label>
           <button
-            onClick={async () => { if (!(await tryStartSession())) return; navigate(`/nova-patient/chat?scenario=${selected}`); }}
+            onClick={async () => { if (!(await tryStartSession())) return; navigate(`/nova-patient/chat?scenario=${selected}&lang=${lang}`); }}
             className="btn-primary px-8 py-3 text-base inline-flex items-center gap-2"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -83,6 +107,19 @@ export default function NovaPatientScenarios() {
           <p className="mt-2 text-secondary text-sm sm:text-base max-w-lg">
             Timed history-taking under exam conditions. Scored on the same 4 domains your OSCE examiner uses.
           </p>
+          <label className="mt-3 flex items-center gap-2 text-sm text-secondary">
+            <span>Patient speaks:</span>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              className="rounded-lg border px-2.5 py-1.5 text-sm bg-transparent"
+              style={{ borderColor: 'var(--card-border)' }}
+            >
+              {OSCE_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.name}</option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="flex gap-2 sm:gap-3 shrink-0 overflow-x-auto">
           {streak.currentStreak > 0 && (
@@ -189,7 +226,7 @@ export default function NovaPatientScenarios() {
       <div className="flex flex-col items-center gap-2 mb-8">
         <button
           disabled={!selected}
-          onClick={async () => { if (!selected) return; if (!(await tryStartSession())) return; navigate(`/nova-patient/chat?scenario=${selected}`); }}
+          onClick={async () => { if (!selected) return; if (!(await tryStartSession())) return; navigate(`/nova-patient/chat?scenario=${selected}&lang=${lang}`); }}
           className="btn-primary px-8 py-3 text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
