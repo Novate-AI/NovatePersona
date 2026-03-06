@@ -58,6 +58,13 @@ function getPiperVoiceId(langCode: string): string | null {
   );
 }
 
+/** Piper/ONNX needs SharedArrayBuffer (requires COOP/COEP headers). Skip Piper when unavailable (e.g. many production hosts). */
+function canUsePiper(): boolean {
+  if (typeof SharedArrayBuffer === "undefined") return false;
+  if (import.meta.env.VITE_FORCE_WEB_SPEECH === "true") return false;
+  return true;
+}
+
 export function useSpeechSynthesis(lang = "en-GB") {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const queueRef = useRef<string[]>([]);
@@ -66,7 +73,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
   const piperErrorRef = useRef(false);
 
   const piperVoiceId = getPiperVoiceId(lang);
-  const usePiper = piperVoiceId && !piperErrorRef.current;
+  const usePiper = canUsePiper() && piperVoiceId && !piperErrorRef.current;
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -246,7 +253,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
 
   /** Pre-warm Piper session so first sentence plays faster. Call on "Start practice". */
   const prewarmPiper = useCallback(async () => {
-    if (!piperVoiceId || piperErrorRef.current || typeof window === "undefined") return;
+    if (!canUsePiper() || !piperVoiceId || piperErrorRef.current || typeof window === "undefined") return;
     if (piperReadyRef.current) return;
     try {
       const tts = await import("@mintplex-labs/piper-tts-web");
