@@ -18,7 +18,7 @@ export function unlockAudio() {
   a.play().catch(() => {});
 }
 
-/** Piper voice IDs by language (Novatutor codes). ja/ko use Web Speech fallback. */
+/** Piper voice IDs by language. Use medium for faster synthesis; ja/ko use Web Speech fallback. */
 const PIPER_VOICES: Record<string, string> = {
   "en-GB": "en_GB-cori-medium",
   "en-US": "en_US-hfc_female-medium",
@@ -30,8 +30,8 @@ const PIPER_VOICES: Record<string, string> = {
   fr: "fr_FR-siwis-medium",
   "de-DE": "de_DE-thorsten-medium",
   de: "de_DE-thorsten-medium",
-  "it-IT": "it_IT-riccardo-x_low",
-  it: "it_IT-riccardo-x_low",
+  "it-IT": "it_IT-paola-medium",
+  it: "it_IT-paola-medium",
   "pt-BR": "pt_BR-faber-medium",
   "pt-PT": "pt_PT-tugão-medium",
   pt: "pt_BR-faber-medium",
@@ -214,7 +214,6 @@ export function useSpeechSynthesis(lang = "en-GB") {
 
   const speakQueued = useCallback(
     (text: string) => {
-      console.log("[TTS] speakQueued called", { textLen: text?.length, preview: text?.slice(0, 40) });
       queueRef.current.push(text);
       if (!isPlayingRef.current) {
         playNext();
@@ -245,6 +244,23 @@ export function useSpeechSynthesis(lang = "en-GB") {
     if (queueRef.current.length > 0 && !isPlayingRef.current) playNext();
   }, [playNext]);
 
+  /** Pre-warm Piper session so first sentence plays faster. Call on "Start practice". */
+  const prewarmPiper = useCallback(async () => {
+    if (!piperVoiceId || piperErrorRef.current || typeof window === "undefined") return;
+    if (piperReadyRef.current) return;
+    try {
+      const tts = await import("@mintplex-labs/piper-tts-web");
+      const session = await tts.TtsSession.create({
+        voiceId: piperVoiceId,
+        wasmPaths: PIPER_WASM_PATHS,
+      });
+      await session.predict("Hi");
+      piperReadyRef.current = true;
+    } catch {
+      /* ignore; will fall back to Web Speech on first speak */
+    }
+  }, [piperVoiceId]);
+
   return {
     isSpeaking,
     speak,
@@ -253,5 +269,6 @@ export function useSpeechSynthesis(lang = "en-GB") {
     isSupported,
     unlockAudio,
     resumeFromUserGesture,
+    prewarmPiper,
   };
 }

@@ -60,7 +60,7 @@ export default function Novatutor() {
     return `${language}-${language.toUpperCase()}`
   }, [language])
 
-  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture } = useSpeechSynthesis(getLangSpeechCode())
+  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture, prewarmPiper } = useSpeechSynthesis(getLangSpeechCode())
   const introTriggeredRef = useRef(false)
   const resumeOnGestureRef = useRef(false)
 
@@ -106,7 +106,6 @@ export default function Novatutor() {
       const s = parts[0].trim()
       // Only queue when we have a complete sentence (ends with . ! ?) — avoid word-by-word TTS
       if (s && /[.!?]$/.test(s)) {
-        console.log('[Novatutor] Queuing sentence:', s.slice(0, 60) + (s.length > 60 ? '...' : ''))
         speakQueued(s)
         spokenUpToRef.current += remaining.length
       }
@@ -127,11 +126,7 @@ export default function Novatutor() {
         batch.length = 0
       }
     }
-    if (batch.length > 0) {
-      const batchText = batch.join(' ')
-      console.log('[Novatutor] Queuing final batch:', batchText.slice(0, 60) + (batchText.length > 60 ? '...' : ''))
-      speakQueued(batchText)
-    }
+    if (batch.length > 0) speakQueued(batch.join(' '))
     spokenUpToRef.current += consumedLength
   }, [speakQueued])
 
@@ -172,7 +167,6 @@ export default function Novatutor() {
             assistantSoFar += content
             // Ensure Novate Abby persona (backend may still return old name)
             const snapshot = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
-            console.log('[Novatutor] Stream chunk, snapshot length:', snapshot.length, 'ends:', snapshot.slice(-30))
             setMessages(prev => {
               const last = prev[prev.length - 1]
               if (last?.role === 'assistant') {
@@ -244,12 +238,12 @@ export default function Novatutor() {
   }, [unlockAudio, resumeFromUserGesture])
 
   const handleStartPractice = useCallback(() => {
-    console.log('[Novatutor] Start practice clicked')
     unlockAudio?.()
     resumeFromUserGesture?.()
+    prewarmPiper?.()
     setAutoIntroSent(true)
     triggerIntro()
-  }, [triggerIntro, unlockAudio, resumeFromUserGesture])
+  }, [triggerIntro, unlockAudio, resumeFromUserGesture, prewarmPiper])
 
   const sendMessage = useCallback(async (content: string) => {
     const text = content.trim()
@@ -521,7 +515,6 @@ export default function Novatutor() {
           <div className="max-w-2xl mx-auto space-y-4">
             {messages.length === 0 && !autoIntroSent && (
               <div className="flex flex-col items-center justify-center py-16 gap-6">
-                <p className="text-sm text-secondary text-center">Click below to hear Abby greet you. (Browsers require a click before playing voice.)</p>
                 <button
                   type="button"
                   onClick={handleStartPractice}

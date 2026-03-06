@@ -18,16 +18,50 @@ import ReactMarkdown from "react-markdown";
 
 const CONSULTATION_DURATION = 8 * 60;
 
-/** First sentence the patient says – spoken when user clicks Start so it's not blocked by autoplay. */
-const PATIENT_FIRST_LINE =
-  "Hello doctor. I've come in because I'm not feeling well. What would you like to know?";
+/** OSCE consultation languages – for doctors practicing in their local language. */
+export const OSCE_LANGUAGES = [
+  { code: "en", name: "English", speechCode: "en-GB" },
+  { code: "de", name: "Deutsch", speechCode: "de-DE" },
+  { code: "fr", name: "Français", speechCode: "fr-FR" },
+  { code: "es", name: "Español", speechCode: "es-ES" },
+  { code: "it", name: "Italiano", speechCode: "it-IT" },
+  { code: "pt", name: "Português", speechCode: "pt-BR" },
+  { code: "zh", name: "中文", speechCode: "zh-CN" },
+] as const;
+
+/** First sentence the patient says – spoken when user clicks Start. Translated per language. */
+const PATIENT_FIRST_LINE: Record<string, string> = {
+  en: "Hello doctor. I've come in because I'm not feeling well. What would you like to know?",
+  de: "Guten Tag, Herr Doktor. Ich bin gekommen, weil ich mich nicht wohl fühle. Was möchten Sie wissen?",
+  fr: "Bonjour docteur. Je suis venu parce que je ne me sens pas bien. Que souhaitez-vous savoir ?",
+  es: "Hola doctor. He venido porque no me siento bien. ¿Qué le gustaría saber?",
+  it: "Buongiorno dottore. Sono venuto perché non mi sento bene. Cosa vorrebbe sapere?",
+  pt: "Olá doutor. Vim porque não me sinto bem. O que gostaria de saber?",
+  zh: "医生您好。我来是因为身体不舒服。您想了解什么？",
+};
 
 type Phase = "active" | "evaluating" | "feedback";
+
+function getSpeechCode(lang: string): string {
+  const found = OSCE_LANGUAGES.find((l) => l.code === lang);
+  return found?.speechCode ?? "en-GB";
+}
+
+function getRecognitionCode(lang: string): string {
+  const found = OSCE_LANGUAGES.find((l) => l.code === lang);
+  if (!found) return "en-GB";
+  if (found.code === "en") return "en-GB";
+  if (found.code === "zh") return "zh-CN";
+  if (found.code === "pt") return "pt-BR";
+  return `${found.code}-${found.code.toUpperCase()}`;
+}
 
 export default function NovaPatientChat() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const scenarioCode = params.get("scenario") || "";
+  const langParam = params.get("lang") || "en";
+  const lang = OSCE_LANGUAGES.some((l) => l.code === langParam) ? langParam : "en";
   const scenario = getScenario(scenarioCode);
   const isMobile = useIsMobile();
 
@@ -45,8 +79,12 @@ export default function NovaPatientChat() {
   const [hasStartedConsultation, setHasStartedConsultation] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { isListening, transcript, start: startListening, stop: stopListening, setTranscript } = useSpeechRecognition();
-  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(undefined);
+  const speechCode = getSpeechCode(lang);
+  const recognitionCode = getRecognitionCode(lang);
+  const patientFirstLine = PATIENT_FIRST_LINE[lang] ?? PATIENT_FIRST_LINE.en;
+
+  const { isListening, transcript, start: startListening, stop: stopListening, setTranscript } = useSpeechRecognition({ lang: recognitionCode });
+  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(speechCode);
 
   const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
@@ -91,6 +129,7 @@ export default function NovaPatientChat() {
     streamChat({
       messages: [],
       scenario: scenarioCode,
+      language: lang,
       onDelta: (chunk) => {
         assistantSoFar += chunk;
         setMessages((prev) => {
@@ -105,7 +144,7 @@ export default function NovaPatientChat() {
       },
       onError: () => { setIsLoading(false); initialGreetingSent.current = false; },
     }).catch(() => { setIsLoading(false); initialGreetingSent.current = false; });
-  }, [hasStartedConsultation, sessionChecked, phase, scenarioCode, scenario, messages.length]);
+  }, [hasStartedConsultation, sessionChecked, phase, scenarioCode, scenario, messages.length, lang]);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || isLoading || !scenario || phase !== "active") return;
@@ -126,6 +165,7 @@ export default function NovaPatientChat() {
       await streamChat({
         messages: allMessages,
         scenario: scenarioCode,
+        language: lang,
         onDelta: (chunk) => {
           assistantSoFar += chunk;
           setMessages(prev => {
@@ -150,7 +190,7 @@ export default function NovaPatientChat() {
         onError: (err) => { setIsLoading(false); setError(err); },
       });
     } catch { setIsLoading(false); setError("Connection error. Please try again."); }
-  }, [isLoading, messages, scenario, scenarioCode, setTranscript, speak, speakQueued, phase]);
+  }, [isLoading, messages, scenario, scenarioCode, lang, setTranscript, speak, speakQueued, phase]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } };
 
@@ -269,6 +309,9 @@ export default function NovaPatientChat() {
             <span className="text-xs font-semibold text-primary">{scenario.patient.name}</span>
             <span className="text-xs text-secondary ml-2">{scenario.name}</span>
           </div>
+          <span className="text-xs text-secondary/80" title="Consultation language">
+            {OSCE_LANGUAGES.find((l) => l.code === lang)?.name ?? "English"}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {isMobile && <HistoryChecklist checklist={checklist} compact />}
@@ -336,13 +379,13 @@ export default function NovaPatientChat() {
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
                 <div className="rounded-xl rounded-tl-none px-4 py-3 max-w-[80%] text-sm space-y-3" style={{ background: 'var(--subtle-bg)' }}>
-                  <p className="text-primary text-sm">{PATIENT_FIRST_LINE}</p>
+                  <p className="text-primary text-sm">{patientFirstLine}</p>
                   {!hasStartedConsultation ? (
                     <button
                       type="button"
                       onClick={() => {
                         unlockAudio?.();
-                        speak(PATIENT_FIRST_LINE);
+                        speak(patientFirstLine);
                         setHasStartedConsultation(true);
                       }}
                       className="text-sm font-semibold text-emerald-500 hover:text-emerald-400 focus:outline-none focus:underline"
