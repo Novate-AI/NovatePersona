@@ -51,16 +51,22 @@ export function parseAssistantMessage(content: string): ParsedMessage {
     mainContent = nonSuggestionLines.join("\n");
   }
 
-  // Extract corrections block (if present)
-  const correctionsBlockMatch = mainContent.match(/CORRECTIONS:\s*\n([\s\S]*?)(?=TRANSLITERATION:|TRANSLATION:|$)/i);
+  // Extract corrections block (if present). Strip "none needed" — only show when there are real corrections.
+  const correctionsBlockMatch = mainContent.match(/CORRECTIONS:\s*\n([\s\S]*?)(?=TRANSLITERATION:|TRANSLATION:|SUGGESTIONS:|$)/i);
   if (correctionsBlockMatch) {
     const lines = correctionsBlockMatch[1].trim().split("\n");
     for (const line of lines) {
       const cleaned = line.replace(/^\s*[-*•]\s*/, "").trim();
-      if (cleaned) corrections.push(cleaned);
+      if (cleaned && !/^\s*none\s*needed\.?\s*$/i.test(cleaned)) corrections.push(cleaned);
     }
     mainContent = mainContent.replace(correctionsBlockMatch[0], "").trim();
   }
+
+  // Strip "CORRECTIONS/Correction: none needed" (LLM may output this despite instructions)
+  mainContent = mainContent
+    .replace(/\s*CORRECTIONS?:\s*none\s*needed\.?\s*/gi, "")
+    .replace(/\s*Correction:\s*none\s*needed\.?\s*/gi, "")
+    .trim();
 
   // Extract transliteration (before translation to avoid order issues)
   const translitMatch = mainContent.match(/TRANSLITERATION:\s*([\s\S]*?)(?=TRANSLATION:|$)/i);
@@ -91,12 +97,12 @@ export function parseAssistantMessage(content: string): ParsedMessage {
     mainContent = nonTranslationLines.join("\n");
   }
 
-  // Extract correction lines into separate meta
+  // Extract correction lines into separate meta. Skip "none needed" — only show real corrections.
   const cleanLines: string[] = [];
   for (const line of mainContent.split("\n")) {
     if (line.trim().startsWith("Correction:")) {
       const c = line.replace(/^Correction:\s*/i, "").trim();
-      if (c) corrections.push(c);
+      if (c && !/^\s*none\s*needed\.?\s*$/i.test(c)) corrections.push(c);
     } else {
       cleanLines.push(line);
     }

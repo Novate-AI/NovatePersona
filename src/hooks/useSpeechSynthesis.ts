@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
 /**
- * Hybrid speech synthesis: Piper TTS (natural, multilingual) with Web Speech API fallback.
- * Piper runs in-browser via ONNX; no backend required.
+ * Speech synthesis: backend TTS (Piper/Edge) when available, else Web Speech API.
  */
 
 /** Minimal silent WAV to unlock audio in browsers that require a user gesture before play(). */
@@ -18,68 +17,22 @@ export function unlockAudio() {
   a.play().catch(() => {});
 }
 
-/** Piper voice IDs by language. Use medium for faster synthesis; ja/ko use Web Speech fallback. */
-const PIPER_VOICES: Record<string, string> = {
-  "en-GB": "en_GB-cori-medium",
-  "en-US": "en_US-hfc_female-medium",
-  en: "en_US-hfc_female-medium",
-  "es-ES": "es_ES-sharvard-medium",
-  "es-MX": "es_MX-claude-high",
-  es: "es_ES-sharvard-medium",
-  "fr-FR": "fr_FR-siwis-medium",
-  fr: "fr_FR-siwis-medium",
-  "de-DE": "de_DE-thorsten-medium",
-  de: "de_DE-thorsten-medium",
-  "it-IT": "it_IT-paola-medium",
-  it: "it_IT-paola-medium",
-  "pt-BR": "pt_BR-faber-medium",
-  "pt-PT": "pt_PT-tugão-medium",
-  pt: "pt_BR-faber-medium",
-  "zh-CN": "zh_CN-huayan-medium",
-  zh: "zh_CN-huayan-medium",
-  "ar-JO": "ar_JO-kareem-medium",
-  ar: "ar_JO-kareem-medium",
-};
-
-/** Piper WASM: served from public/piper-wasm/ (copied from node_modules by postinstall). */
-const PIPER_WASM_BASE = "/piper-wasm/piper_phonemize";
-const PIPER_WASM_PATHS = {
-  onnxWasm: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/",
-  piperData: `${PIPER_WASM_BASE}.data`,
-  piperWasm: `${PIPER_WASM_BASE}.wasm`,
-};
-
-function getPiperVoiceId(langCode: string): string | null {
-  const normalized = langCode.replace("_", "-");
-  return (
-    PIPER_VOICES[normalized] ??
-    PIPER_VOICES[normalized.split("-")[0]] ??
-    null
-  );
-}
-
-/** Piper/ONNX needs SharedArrayBuffer (requires COOP/COEP headers). Skip Piper when unavailable (e.g. many production hosts). */
-function canUsePiper(): boolean {
-  if (typeof SharedArrayBuffer === "undefined") return false;
-  if (import.meta.env.VITE_FORCE_WEB_SPEECH === "true") return false;
-  return true;
-}
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:5000").replace(
+  /\/api\/chat\/?$/,
+  ""
+);
+const TTS_URL = `${BACKEND_URL}/api/tts`;
 
 export function useSpeechSynthesis(lang = "en-GB") {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const queueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
-  const piperReadyRef = useRef(false);
-  const piperErrorRef = useRef(false);
-
-  const piperVoiceId = getPiperVoiceId(lang);
-  const usePiper = canUsePiper() && piperVoiceId && !piperErrorRef.current;
+  const ttsErrorRef = useRef(false);
 
   const isSupported =
     typeof window !== "undefined" &&
-    ("speechSynthesis" in window || usePiper);
+    ("speechSynthesis" in window || !!import.meta.env.VITE_BACKEND_URL);
 
-  // Web Speech API voices (fallback)
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -117,43 +70,38 @@ export function useSpeechSynthesis(lang = "en-GB") {
     return pool[0] || langVoices[0];
   }, []);
 
-  const playWithPiper = useCallback(
+  const playWithBackendTTS = useCallback(
     async (text: string): Promise<void> => {
-      if (!piperVoiceId || typeof window === "undefined") return;
-      try {
-        const tts = await import("@mintplex-labs/piper-tts-web");
-        const session = await tts.TtsSession.create({
-          voiceId: piperVoiceId,
-          wasmPaths: PIPER_WASM_PATHS,
-        });
-        const wav = await session.predict(
-          text
-            .replace(/\s*\([^)]*\)/g, "")
-            .replace(/\s{2,}/g, " ")
-            .trim()
-        );
-        if (!wav || wav.size === 0) throw new Error("Empty audio");
-        piperReadyRef.current = true;
-        return new Promise((resolve, reject) => {
-          const audio = new Audio(URL.createObjectURL(wav));
-          audio.onended = () => {
-            URL.revokeObjectURL(audio.src);
-            resolve();
-          };
-          audio.onerror = (e) => {
-            URL.revokeObjectURL(audio.src);
-            reject(e);
-          };
-          unlockAudio();
-          audio.play().catch(reject);
-        });
-      } catch (e) {
-        console.warn("Piper TTS failed, falling back to Web Speech:", e);
-        piperErrorRef.current = true;
-        throw e;
-      }
+      const cleaned = text
+        .replace(/\s*\([^)]*\)/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      if (!cleaned) return;
+
+      const res = await fetch(TTS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: cleaned, input: cleaned, lang }),
+      });
+      if (!res.ok) throw new Error("TTS failed");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      return new Promise((resolve, reject) => {
+        const audio = new Audio(url);
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        audio.onerror = (e) => {
+          URL.revokeObjectURL(url);
+          reject(e);
+        };
+        unlockAudio();
+        audio.play().catch(reject);
+      });
     },
-    [piperVoiceId]
+    []
   );
 
   const playWithWebSpeech = useCallback(
@@ -205,19 +153,17 @@ export function useSpeechSynthesis(lang = "en-GB") {
     }
 
     try {
-      if (usePiper && piperVoiceId && !piperErrorRef.current) {
-        console.log("[TTS] Using Piper (natural voice)", { voiceId: piperVoiceId });
-        await playWithPiper(text);
+      if (!ttsErrorRef.current) {
+        await playWithBackendTTS(text);
       } else {
         throw new Error("Use Web Speech");
       }
     } catch {
-      console.log("[TTS] Using browser Web Speech API (fallback)", { lang });
+      ttsErrorRef.current = true;
       await playWithWebSpeech(text);
     }
-
     setTimeout(() => playNext(), 80);
-  }, [usePiper, piperVoiceId, playWithPiper, playWithWebSpeech]);
+  }, [playWithBackendTTS, playWithWebSpeech]);
 
   const speakQueued = useCallback(
     (text: string) => {
@@ -251,23 +197,6 @@ export function useSpeechSynthesis(lang = "en-GB") {
     if (queueRef.current.length > 0 && !isPlayingRef.current) playNext();
   }, [playNext]);
 
-  /** Pre-warm Piper session so first sentence plays faster. Call on "Start practice". */
-  const prewarmPiper = useCallback(async () => {
-    if (!canUsePiper() || !piperVoiceId || piperErrorRef.current || typeof window === "undefined") return;
-    if (piperReadyRef.current) return;
-    try {
-      const tts = await import("@mintplex-labs/piper-tts-web");
-      const session = await tts.TtsSession.create({
-        voiceId: piperVoiceId,
-        wasmPaths: PIPER_WASM_PATHS,
-      });
-      await session.predict("Hi");
-      piperReadyRef.current = true;
-    } catch {
-      /* ignore; will fall back to Web Speech on first speak */
-    }
-  }, [piperVoiceId]);
-
   return {
     isSpeaking,
     speak,
@@ -276,6 +205,5 @@ export function useSpeechSynthesis(lang = "en-GB") {
     isSupported,
     unlockAudio,
     resumeFromUserGesture,
-    prewarmPiper,
   };
 }

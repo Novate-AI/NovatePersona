@@ -13,21 +13,3 @@ export const LANGUAGES = [
   { code: 'ar', name: 'Arabic' },
 ] as const
 
-export type MessageRole = 'user' | 'assistant' | 'system'
-
-export interface IELTSPart {
-  part: 1 | 2 | 3
-  title: string
-  instruction: string
-  durationSeconds?: number
-  prompt?: string
-}
-
-export interface IELTSBandFeedback {
-  fluency: number
-  vocabulary: number
-  grammar: number
-  pronunciation: number
-  overall: number
-  comments: string
-}

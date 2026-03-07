@@ -2,7 +2,7 @@ const CACHE_NAME = 'novate-persona-v1'
 const SHELL_ASSETS = [
   '/',
   '/index.html',
-  '/vite.svg',
+  '/favicon.svg',
   '/manifest.json',
 ]
 
@@ -24,6 +24,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
+  // Cache API only supports http/https; skip chrome-extension, etc.
+  if (!event.request.url.startsWith('http')) return
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

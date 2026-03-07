@@ -4,8 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "copy:piper": "node scripts/copy-piper-wasm.mjs",
-    "postinstall": "npm run copy:piper",
     "dev": "vite",
     "dev:fresh": "node -e \"try{require('fs').rmSync('node_modules/.vite',{recursive:true,force:true})}catch(e){}\" && vite",
     "build": "tsc && vite build",
@@ -25,8 +23,6 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@diffusionstudio/piper-wasm": "^1.0.0",
-    "@mintplex-labs/piper-tts-web": "^1.0.4",
     "@supabase/supabase-js": "^2.97.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
