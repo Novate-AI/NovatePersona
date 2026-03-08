@@ -23,10 +23,16 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@amplitude/analytics-browser": "^1.13.6",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@react-three/postprocessing": "^2.17.0",
+    "@readyplayerme/visage": "^6.16.0",
     "@supabase/supabase-js": "^2.97.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.13.0"
+    "react-router-dom": "^7.13.0",
+    "three": "^0.183.2"
   }
 }

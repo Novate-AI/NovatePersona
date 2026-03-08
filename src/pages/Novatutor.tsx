@@ -303,11 +303,20 @@ export default function Novatutor() {
       const resp = await fetch(FEEDBACK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: messages.map(m => ({ role: m.role, content: m.content })), language: langName }),
+        body: JSON.stringify({
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+          language: langName,
+        }),
       })
-      const data = await resp.json()
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        console.error('Feedback API error:', resp.status, data)
+        setFeedbackText(data?.error || `Request failed (${resp.status}). Please try again.`)
+        return
+      }
       setFeedbackText(data.feedback || 'Could not generate feedback.')
-    } catch {
+    } catch (e) {
+      console.error('Feedback error:', e)
       setFeedbackText('Error generating feedback. Please try again.')
     } finally {
       setFeedbackLoading(false)
