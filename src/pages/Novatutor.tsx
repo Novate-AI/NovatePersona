@@ -96,7 +96,7 @@ export default function Novatutor() {
   }, [language, cefrLevel])
 
   // Speak each sentence as soon as it's complete for more immediate response
-  const SENTENCES_PER_CHUNK = 2
+  const SENTENCES_PER_CHUNK = 1
   const checkAndQueueSentences = useCallback((fullText: string) => {
     const speakable = getSpeakableText(fullText)
     const remaining = speakable.slice(spokenUpToRef.current)
