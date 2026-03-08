@@ -7,7 +7,7 @@ import { saveResult, saveSession, loadSession, clearSession } from "../lib/progr
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 import { useIsMobile } from "../hooks/useIsMobile";
-import ReadyPlayerMeAvatar from "../components/novapatient/ReadyPlayerMeAvatar";
+import TalkingAvatar from "../components/novapatient/TalkingAvatar";
 import ConsultationTimer from "../components/novapatient/ConsultationTimer";
 import HistoryChecklist from "../components/novapatient/HistoryChecklist";
 import FeedbackCard from "../components/novapatient/FeedbackCard";
@@ -271,17 +271,28 @@ export default function NovaPatientChat() {
 
   if (phase === "feedback" && evaluation) {
     return (
-      <div className="max-w-3xl mx-auto py-8 animate-in px-5">
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => navigate("/nova-patient")} className="btn-ghost h-8 w-8 p-0 shrink-0">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
-          </button>
-          <div>
+      <div className="min-h-screen flex flex-col">
+        {/* Top bar with nav and back */}
+        <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+          <div className="flex items-center gap-3">
+            <ProductNav current="NovaPatient" />
+            <div className="h-4 w-px bg-(--card-border)" />
+            <button
+              onClick={() => navigate("/nova-patient")}
+              className="btn-ghost h-8 px-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:bg-(--subtle-bg) rounded-lg"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+              Back to Scenarios
+            </button>
+          </div>
+        </div>
+        <div className="max-w-3xl mx-auto py-8 animate-in px-5 flex-1">
+          <div className="mb-6">
             <h1 className="text-sm font-bold text-primary">OSCE Results</h1>
             <p className="text-xs text-secondary">{scenario.patient.name} &middot; {scenario.name}</p>
           </div>
+          <FeedbackCard evaluation={evaluation} onRetry={retryCase} onNewScenario={() => navigate("/nova-patient")} scenarioName={scenario.name} patientName={scenario.patient.name} />
         </div>
-        <FeedbackCard evaluation={evaluation} onRetry={retryCase} onNewScenario={() => navigate("/nova-patient")} scenarioName={scenario.name} patientName={scenario.patient.name} />
       </div>
     );
   }
@@ -331,11 +342,12 @@ export default function NovaPatientChat() {
         {/* Sidebar (desktop) */}
         {!isMobile && (
           <div className="w-72 shrink-0 border-r overflow-y-auto p-4 space-y-4" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-            <ReadyPlayerMeAvatar
-              speakingAudioRef={speakingAudioRef}
+            <TalkingAvatar
               isSpeaking={isSpeaking}
               isListening={isListening}
-              displayName={scenario.patient.name}
+              scenarioName={scenario.name}
+              patientGender={scenario.patient.gender}
+              patientName={scenario.patient.name}
             />
 
             <div className="border-t pt-4" style={{ borderColor: 'var(--card-border)' }}>
@@ -357,11 +369,12 @@ export default function NovaPatientChat() {
           {/* Mobile header strip */}
           {isMobile && (
             <div className="shrink-0 border-b p-3 space-y-3" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-              <ReadyPlayerMeAvatar
-                speakingAudioRef={speakingAudioRef}
+              <TalkingAvatar
                 isSpeaking={isSpeaking}
                 isListening={isListening}
-                displayName={scenario.patient.name}
+                scenarioName={scenario.name}
+                patientGender={scenario.patient.gender}
+                patientName={scenario.patient.name}
                 compact
               />
               <div className="flex items-center justify-between">

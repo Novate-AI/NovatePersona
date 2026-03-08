@@ -31,7 +31,7 @@ export default function TalkingAvatar({
     return (
       <div className="flex items-center gap-3">
         <div className={`relative w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center ${isSpeaking ? "np-jaw-move" : "np-breathe"}`} style={{ background: 'var(--subtle-bg)' }}>
-          <PatientAvatar gender={patientGender} size={48} />
+          <PatientAvatar gender={patientGender} size={48} seed={scenarioName && patientName ? `${scenarioName}-${patientName}` : undefined} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-primary truncate">{displayName}</p>
@@ -48,7 +48,7 @@ export default function TalkingAvatar({
   return (
     <div className="flex flex-col items-center gap-3">
       <div className={`relative w-28 h-28 rounded-2xl overflow-hidden flex items-center justify-center ${isSpeaking ? "np-jaw-move" : "np-breathe"}`} style={{ background: 'var(--subtle-bg)' }}>
-        <PatientAvatar gender={patientGender} size={112} />
+        <PatientAvatar gender={patientGender} size={112} seed={scenarioName && patientName ? `${scenarioName}-${patientName}` : undefined} />
         {isSpeaking && (
           <div className="absolute -inset-0.5 rounded-2xl np-glow-pulse border border-emerald-500/20 pointer-events-none" />
         )}

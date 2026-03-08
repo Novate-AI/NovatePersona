@@ -156,13 +156,13 @@ export default function NovaPatientScenarios() {
               return (
                 <button
                   key={r.scenarioCode}
-                  onClick={async () => { if (!(await tryStartSession())) return; setSelected(r.scenarioCode); navigate(`/nova-patient/chat?scenario=${r.scenarioCode}`); }}
+                  onClick={async () => { if (!(await tryStartSession())) return; setSelected(r.scenarioCode); navigate(`/nova-patient/chat?scenario=${r.scenarioCode}&lang=${lang}`); }}
                   className={`flex items-center gap-3 rounded-lg border px-4 py-3.5 text-left transition-all hover:border-(--card-hover-border) flex-1 min-w-0 ${
                     r.priority === 'high' ? 'border-amber-500/30 bg-amber-500/5' : ''
                   }`}
                   style={r.priority !== 'high' ? { borderColor: 'var(--card-border)', background: 'var(--card-bg)' } : undefined}
                 >
-                  <PatientAvatar gender={scenario.patient.gender} size={32} className="shrink-0" />
+                  <PatientAvatar gender={scenario.patient.gender} size={32} className="shrink-0" seed={`${r.scenarioCode}-${scenario.patient.name}`} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-primary truncate">{scenario.name}</p>
                     <p className="text-xs text-secondary truncate">{r.reason}</p>
@@ -194,7 +194,7 @@ export default function NovaPatientScenarios() {
               }`}
             >
               <div className="flex items-start gap-3 mb-3">
-                <PatientAvatar gender={s.patient.gender} size={40} className="shrink-0" />
+                <PatientAvatar gender={s.patient.gender} size={40} className="shrink-0" seed={`${s.code}-${s.patient.name}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-bold text-primary truncate">{s.name}</h3>

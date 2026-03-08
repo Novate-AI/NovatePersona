@@ -20,7 +20,7 @@ function lazyRetry(fn: () => Promise<{ default: React.ComponentType }>) {
 const Home = lazyRetry(() => import('./pages/Home'))
 const Novatutor = lazyRetry(() => import('./pages/Novatutor'))
 const NovateExaminer = lazyRetry(() => import('./pages/NovateExaminer'))
-const NovaPatientScenarios = lazyRetry(() => import('./pages/NovaPatientScenarios'))
+import NovaPatientScenarios from './pages/NovaPatientScenarios'
 const NovaPatientChat = lazyRetry(() => import('./pages/NovaPatientChat'))
 const Features = lazyRetry(() => import('./pages/Features'))
 const Pricing = lazyRetry(() => import('./pages/Pricing'))

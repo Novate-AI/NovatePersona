@@ -2,10 +2,34 @@ interface PatientAvatarProps {
   gender: "Male" | "Female";
   size?: number;
   className?: string;
+  /** Unique seed for deterministic realistic avatar (e.g. scenarioCode-patientName). When provided, uses photo; otherwise falls back to SVG. */
+  seed?: string;
 }
 
-export default function PatientAvatar({ gender, size = 120, className = "" }: PatientAvatarProps) {
+function hashSeed(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  return Math.abs(h) % 100;
+}
+
+export default function PatientAvatar({ gender, size = 120, className = "", seed }: PatientAvatarProps) {
   const isMale = gender === "Male";
+
+  if (seed) {
+    const id = hashSeed(seed);
+    const path = isMale ? "men" : "women";
+    const src = `https://randomuser.me/api/portraits/med/${path}/${id}.jpg`;
+    return (
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        className={`rounded-full object-cover shrink-0 ${className}`}
+        loading="lazy"
+      />
+    );
+  }
 
   return (
     <svg
