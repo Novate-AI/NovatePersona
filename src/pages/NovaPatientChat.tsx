@@ -7,7 +7,7 @@ import { saveResult, saveSession, loadSession, clearSession } from "../lib/progr
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 import { useIsMobile } from "../hooks/useIsMobile";
-import TalkingAvatar from "../components/novapatient/TalkingAvatar";
+import ReadyPlayerMeAvatar from "../components/novapatient/ReadyPlayerMeAvatar";
 import ConsultationTimer from "../components/novapatient/ConsultationTimer";
 import HistoryChecklist from "../components/novapatient/HistoryChecklist";
 import FeedbackCard from "../components/novapatient/FeedbackCard";
@@ -82,9 +82,10 @@ export default function NovaPatientChat() {
   const speechCode = getSpeechCode(lang);
   const recognitionCode = getRecognitionCode(lang);
   const patientFirstLine = PATIENT_FIRST_LINE[lang] ?? PATIENT_FIRST_LINE.en;
+  const speakingAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const { isListening, transcript, start: startListening, stop: stopListening, setTranscript } = useSpeechRecognition({ lang: recognitionCode });
-  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(speechCode);
+  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(speechCode, speakingAudioRef);
 
   const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
@@ -330,10 +331,11 @@ export default function NovaPatientChat() {
         {/* Sidebar (desktop) */}
         {!isMobile && (
           <div className="w-72 shrink-0 border-r overflow-y-auto p-4 space-y-4" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-            <TalkingAvatar
-              isSpeaking={isSpeaking} isListening={isListening}
-              scenarioName={scenario.name}
-              patientGender={scenario.patient.gender} patientName={scenario.patient.name}
+            <ReadyPlayerMeAvatar
+              speakingAudioRef={speakingAudioRef}
+              isSpeaking={isSpeaking}
+              isListening={isListening}
+              displayName={scenario.patient.name}
             />
 
             <div className="border-t pt-4" style={{ borderColor: 'var(--card-border)' }}>
@@ -355,10 +357,11 @@ export default function NovaPatientChat() {
           {/* Mobile header strip */}
           {isMobile && (
             <div className="shrink-0 border-b p-3 space-y-3" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-              <TalkingAvatar
-                isSpeaking={isSpeaking} isListening={isListening}
-                scenarioName={scenario.name}
-                patientGender={scenario.patient.gender} patientName={scenario.patient.name}
+              <ReadyPlayerMeAvatar
+                speakingAudioRef={speakingAudioRef}
+                isSpeaking={isSpeaking}
+                isListening={isListening}
+                displayName={scenario.patient.name}
                 compact
               />
               <div className="flex items-center justify-between">

@@ -23,11 +23,18 @@ const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:5000"
 );
 const TTS_URL = `${BACKEND_URL}/api/tts`;
 
-export function useSpeechSynthesis(lang = "en-GB") {
+/** Piper voice for en-GB: English (England) female. Override via VITE_TTS_VOICE_EN_GB. */
+const VOICE_EN_GB = import.meta.env.VITE_TTS_VOICE_EN_GB || "en_GB-cori";
+
+/** Ref to the currently playing Audio element (backend TTS only). Used for lip-sync analysis. */
+export type SpeakingAudioRef = import("react").MutableRefObject<HTMLAudioElement | null>;
+
+export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAudioRef) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const queueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
   const ttsErrorRef = useRef(false);
+  const prefetchedRef = useRef<{ text: string; blob: Blob; url: string } | null>(null);
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -70,30 +77,51 @@ export function useSpeechSynthesis(lang = "en-GB") {
     return pool[0] || langVoices[0];
   }, []);
 
+  const fetchTTSBlob = useCallback(
+    async (text: string): Promise<Blob> => {
+      const cleaned = text
+        .replace(/\s*\([^)]*\)/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      if (!cleaned) throw new Error("Empty text");
+      const body: Record<string, string> = { text: cleaned, input: cleaned, lang };
+      if (lang.toLowerCase().startsWith("en-gb")) body.voice = VOICE_EN_GB;
+      const res = await fetch(TTS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("TTS failed");
+      return res.blob();
+    },
+    [lang]
+  );
+
   const playWithBackendTTS = useCallback(
-    async (text: string): Promise<void> => {
+    async (text: string, blobOrNull?: Blob | null): Promise<void> => {
       const cleaned = text
         .replace(/\s*\([^)]*\)/g, "")
         .replace(/\s{2,}/g, " ")
         .trim();
       if (!cleaned) return;
 
-      const res = await fetch(TTS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: cleaned, input: cleaned, lang }),
-      });
-      if (!res.ok) throw new Error("TTS failed");
-
-      const blob = await res.blob();
+      let blob: Blob;
+      if (blobOrNull) {
+        blob = blobOrNull;
+      } else {
+        blob = await fetchTTSBlob(cleaned);
+      }
       const url = URL.createObjectURL(blob);
       return new Promise((resolve, reject) => {
         const audio = new Audio(url);
+        if (speakingAudioRef) speakingAudioRef.current = audio;
         audio.onended = () => {
+          if (speakingAudioRef) speakingAudioRef.current = null;
           URL.revokeObjectURL(url);
           resolve();
         };
         audio.onerror = (e) => {
+          if (speakingAudioRef) speakingAudioRef.current = null;
           URL.revokeObjectURL(url);
           reject(e);
         };
@@ -101,7 +129,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
         audio.play().catch(reject);
       });
     },
-    []
+    [fetchTTSBlob, speakingAudioRef]
   );
 
   const playWithWebSpeech = useCallback(
@@ -140,6 +168,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
     if (queueRef.current.length === 0) {
       isPlayingRef.current = false;
       setIsSpeaking(false);
+      prefetchedRef.current = null;
       return;
     }
 
@@ -148,13 +177,32 @@ export function useSpeechSynthesis(lang = "en-GB") {
     const text = queueRef.current.shift()!;
 
     if (!text.trim()) {
-      setTimeout(() => playNext(), 80);
+      queueMicrotask(playNext);
       return;
+    }
+
+    // Use prefetched blob if it matches (reduces lag: play immediately, no wait for fetch)
+    const prefetched = prefetchedRef.current;
+    prefetchedRef.current = null;
+    const trimmed = text.trim();
+    const usePrefetched = prefetched && prefetched.text === trimmed;
+    if (usePrefetched && prefetched!.url) {
+      URL.revokeObjectURL(prefetched!.url);
+    }
+
+    // Prefetch next sentence in parallel while current plays (Lovable-style: don't wait for render)
+    const nextText = queueRef.current[0]?.trim();
+    if (nextText && !ttsErrorRef.current) {
+      fetchTTSBlob(nextText)
+        .then((blob) => {
+          prefetchedRef.current = { text: nextText, blob, url: URL.createObjectURL(blob) };
+        })
+        .catch(() => {});
     }
 
     try {
       if (!ttsErrorRef.current) {
-        await playWithBackendTTS(text);
+        await playWithBackendTTS(text, usePrefetched ? prefetched!.blob : null);
       } else {
         throw new Error("Use Web Speech");
       }
@@ -162,8 +210,8 @@ export function useSpeechSynthesis(lang = "en-GB") {
       ttsErrorRef.current = true;
       await playWithWebSpeech(text);
     }
-    setTimeout(() => playNext(), 80);
-  }, [playWithBackendTTS, playWithWebSpeech]);
+    queueMicrotask(playNext);
+  }, [playWithBackendTTS, playWithWebSpeech, fetchTTSBlob]);
 
   const speakQueued = useCallback(
     (text: string) => {
@@ -179,6 +227,7 @@ export function useSpeechSynthesis(lang = "en-GB") {
     queueRef.current = [];
     isPlayingRef.current = false;
     setIsSpeaking(false);
+    prefetchedRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
