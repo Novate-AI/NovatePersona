@@ -35,6 +35,7 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
   const isPlayingRef = useRef(false);
   const ttsErrorRef = useRef(false);
   const prefetchedRef = useRef<{ text: string; blob: Blob; url: string } | null>(null);
+  const prefetched2Ref = useRef<{ text: string; blob: Blob; url: string } | null>(null);
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -182,16 +183,26 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
     }
 
     // Use prefetched blob if it matches (reduces lag: play immediately, no wait for fetch)
-    const prefetched = prefetchedRef.current;
-    prefetchedRef.current = null;
     const trimmed = text.trim();
-    const usePrefetched = prefetched && prefetched.text === trimmed;
-    if (usePrefetched && prefetched!.url) {
-      URL.revokeObjectURL(prefetched!.url);
+    const p1 = prefetchedRef.current;
+    const p2 = prefetched2Ref.current;
+    prefetchedRef.current = null;
+    prefetched2Ref.current = null;
+    let blobToUse: Blob | null = null;
+    if (p1?.text === trimmed) {
+      if (p1.url) URL.revokeObjectURL(p1.url);
+      blobToUse = p1.blob;
+    } else if (p2?.text === trimmed) {
+      if (p2.url) URL.revokeObjectURL(p2.url);
+      blobToUse = p2.blob;
+    } else {
+      if (p1?.url) URL.revokeObjectURL(p1.url);
+      if (p2?.url) URL.revokeObjectURL(p2.url);
     }
 
-    // Prefetch next sentence in parallel while current plays (Lovable-style: don't wait for render)
+    // Prefetch 2 ahead: in production TTS can take 5–20s, so prefetch next + next+1 while current plays
     const nextText = queueRef.current[0]?.trim();
+    const nextNextText = queueRef.current[1]?.trim();
     if (nextText && !ttsErrorRef.current) {
       fetchTTSBlob(nextText)
         .then((blob) => {
@@ -199,10 +210,17 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
         })
         .catch(() => {});
     }
+    if (nextNextText && nextNextText !== nextText && !ttsErrorRef.current) {
+      fetchTTSBlob(nextNextText)
+        .then((blob) => {
+          prefetched2Ref.current = { text: nextNextText, blob, url: URL.createObjectURL(blob) };
+        })
+        .catch(() => {});
+    }
 
     try {
       if (!ttsErrorRef.current) {
-        await playWithBackendTTS(text, usePrefetched ? prefetched!.blob : null);
+        await playWithBackendTTS(text, blobToUse);
       } else {
         throw new Error("Use Web Speech");
       }
@@ -228,6 +246,7 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
     isPlayingRef.current = false;
     setIsSpeaking(false);
     prefetchedRef.current = null;
+    prefetched2Ref.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
