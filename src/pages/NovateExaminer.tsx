@@ -97,23 +97,27 @@ export default function NovateExaminer() {
     }
   }, [])
 
-  // Sentence chunking: advance by exact consumed length so delimiter (space/newline) doesn't cause skip or repeat
+  // Batch 2 sentences per TTS call to reduce gaps between phrases
+  const SENTENCES_PER_CHUNK = 2
   const checkAndQueueSentences = useCallback((fullText: string) => {
     const speakable = getSpeakableText(fullText)
     const remaining = speakable.slice(spokenUpToRef.current)
     const parts = remaining.split(/(?<=[.!?])\s+/)
     if (parts.length <= 1) return
     let consumedLength = 0
+    const batch: string[] = []
     for (let i = 0; i < parts.length - 1; i++) {
       const sentence = parts[i].trim()
-      if (sentence) speakQueued(sentence)
+      if (sentence) batch.push(sentence)
       const nextPartStart = remaining.indexOf(parts[i + 1], consumedLength)
-      if (nextPartStart >= 0) {
-        consumedLength = nextPartStart
-      } else {
-        consumedLength += parts[i].length + 1
+      if (nextPartStart >= 0) consumedLength = nextPartStart
+      else consumedLength += parts[i].length + 1
+      if (batch.length >= SENTENCES_PER_CHUNK) {
+        speakQueued(batch.join(' '))
+        batch.length = 0
       }
     }
+    if (batch.length > 0) speakQueued(batch.join(' '))
     spokenUpToRef.current += consumedLength
   }, [speakQueued])
 

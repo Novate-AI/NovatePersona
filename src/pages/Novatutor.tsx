@@ -97,8 +97,8 @@ export default function Novatutor() {
     introTriggeredRef.current = false
   }, [language, cefrLevel])
 
-  // Speak each sentence as soon as it's complete for more immediate response
-  const SENTENCES_PER_CHUNK = 1
+  // Batch 2 sentences per TTS call to reduce gaps between phrases (fewer round trips)
+  const SENTENCES_PER_CHUNK = 2
   const checkAndQueueSentences = useCallback((fullText: string) => {
     const speakable = getSpeakableText(fullText)
     const remaining = speakable.slice(spokenUpToRef.current)
