@@ -126,7 +126,10 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
           reject(e);
         };
         unlockAudio();
-        audio.play().catch(reject);
+        // Yield one frame so avatar can connect audio for lip sync before playback starts
+        requestAnimationFrame(() => {
+          audio.play().catch(reject);
+        });
       });
     },
     [fetchTTSBlob, speakingAudioRef]
@@ -215,12 +218,22 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
 
   const speakQueued = useCallback(
     (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const isNext = queueRef.current.length === 0;
       queueRef.current.push(text);
       if (!isPlayingRef.current) {
         playNext();
+      } else if (isNext && !ttsErrorRef.current) {
+        // New item is the immediate next; prefetch now to avoid gap between sentences.
+        fetchTTSBlob(trimmed)
+          .then((blob) => {
+            prefetchedRef.current = { text: trimmed, blob, url: URL.createObjectURL(blob) };
+          })
+          .catch(() => {});
       }
     },
-    [playNext]
+    [playNext, fetchTTSBlob]
   );
 
   const stop = useCallback(() => {

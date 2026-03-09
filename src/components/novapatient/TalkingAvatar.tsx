@@ -1,4 +1,6 @@
 import PatientAvatar from "./PatientAvatar";
+import { useAudioLipSync } from "../../hooks/useAudioLipSync";
+import type { SpeakingAudioRef } from "../../hooks/useSpeechSynthesis";
 
 interface TalkingAvatarProps {
   isSpeaking: boolean;
@@ -7,6 +9,8 @@ interface TalkingAvatarProps {
   patientGender?: "Male" | "Female";
   patientName?: string;
   compact?: boolean;
+  /** When provided, drives real-time lip-sync from TTS audio. Uses SVG avatar for animated mouth. */
+  speakingAudioRef?: SpeakingAudioRef;
 }
 
 function EqBars() {
@@ -22,16 +26,25 @@ function EqBars() {
 export default function TalkingAvatar({
   isSpeaking, isListening, scenarioName,
   patientGender = "Male", patientName, compact,
+  speakingAudioRef,
 }: TalkingAvatarProps) {
+  const mouthOpen = useAudioLipSync(speakingAudioRef, isSpeaking);
+  const useLipSync = !!speakingAudioRef;
   const status = isSpeaking ? "Speaking" : isListening ? "Listening" : "Ready";
   const statusDot = isSpeaking ? "bg-emerald-500" : isListening ? "bg-red-500" : "bg-zinc-400";
   const displayName = patientName || `${scenarioName} Patient`;
+  const avatarSize = compact ? 48 : 112;
+  const avatarProps = {
+    gender: patientGender,
+    size: avatarSize,
+    ...(useLipSync ? { mouthOpen, seed: undefined } : { seed: scenarioName && patientName ? `${scenarioName}-${patientName}` : undefined }),
+  };
 
   if (compact) {
     return (
       <div className="flex items-center gap-3">
-        <div className={`relative w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center ${isSpeaking ? "np-jaw-move" : "np-breathe"}`} style={{ background: 'var(--subtle-bg)' }}>
-          <PatientAvatar gender={patientGender} size={48} seed={scenarioName && patientName ? `${scenarioName}-${patientName}` : undefined} />
+        <div className={`relative w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center ${!useLipSync && isSpeaking ? "np-jaw-move" : !useLipSync ? "np-breathe" : ""}`} style={{ background: 'var(--subtle-bg)' }}>
+          <PatientAvatar {...avatarProps} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-primary truncate">{displayName}</p>
@@ -47,8 +60,8 @@ export default function TalkingAvatar({
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className={`relative w-28 h-28 rounded-2xl overflow-hidden flex items-center justify-center ${isSpeaking ? "np-jaw-move" : "np-breathe"}`} style={{ background: 'var(--subtle-bg)' }}>
-        <PatientAvatar gender={patientGender} size={112} seed={scenarioName && patientName ? `${scenarioName}-${patientName}` : undefined} />
+      <div className={`relative w-28 h-28 rounded-2xl overflow-hidden flex items-center justify-center ${!useLipSync && isSpeaking ? "np-jaw-move" : !useLipSync ? "np-breathe" : ""}`} style={{ background: 'var(--subtle-bg)' }}>
+        <PatientAvatar {...avatarProps} />
         {isSpeaking && (
           <div className="absolute -inset-0.5 rounded-2xl np-glow-pulse border border-emerald-500/20 pointer-events-none" />
         )}

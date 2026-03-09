@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import ProductNav from '../components/ProductNav'
+import TalkingHead3DAvatar from '../components/novapatient/TalkingHead3DAvatar'
 import UpgradeWall from '../components/UpgradeWall'
 import { useSessionGate } from '../hooks/useSessionGate'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
@@ -64,7 +65,8 @@ export default function NovateExaminer() {
   const inTimedWindowRef = useRef(false)
 
   // TTS
-  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio } = useSpeechSynthesis('en-GB')
+  const speakingAudioRef = useRef<HTMLAudioElement | null>(null)
+  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio } = useSpeechSynthesis('en-GB', speakingAudioRef)
   const spokenUpToRef = useRef(0)
   const isSpeakingRef = useRef(false)
   const isLoadingRef = useRef(false)
@@ -616,8 +618,16 @@ export default function NovateExaminer() {
 
       {/* Main */}
       <div className="flex-1 flex min-h-0">
-        {/* Sidebar — exam tips (desktop) */}
+        {/* Sidebar — avatar + exam tips (desktop) */}
         <div className="hidden lg:flex w-64 shrink-0 border-r overflow-y-auto p-4 flex-col gap-5" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
+          <TalkingHead3DAvatar
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            displayName="Tom"
+            compact
+            body="M"
+            speakingAudioRef={speakingAudioRef}
+          />
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-widest text-secondary">Exam Tips</h3>
             <ul className="space-y-2.5">

@@ -7,6 +7,7 @@ import { generatePlainTextReport, generateTranscriptReport } from '../lib/pdfRep
 import type { CEFRLevel } from '../types'
 import { LANGUAGES } from '../types'
 import ProductNav from '../components/ProductNav'
+import TalkingHead3DAvatar from '../components/novapatient/TalkingHead3DAvatar'
 import UpgradeWall from '../components/UpgradeWall'
 import { useSessionGate } from '../hooks/useSessionGate'
 import { t, getStarters, setUILocale, detectUILocale, type UILocale } from '../lib/i18n'
@@ -60,7 +61,8 @@ export default function Novatutor() {
     return `${language}-${language.toUpperCase()}`
   }, [language])
 
-  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture } = useSpeechSynthesis(getLangSpeechCode())
+  const speakingAudioRef = useRef<HTMLAudioElement | null>(null)
+  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture } = useSpeechSynthesis(getLangSpeechCode(), speakingAudioRef)
   const introTriggeredRef = useRef(false)
   const resumeOnGestureRef = useRef(false)
 
@@ -518,6 +520,15 @@ export default function Novatutor() {
 
       {/* Chat */}
       <div className="flex-1 flex min-h-0">
+        {/* Sidebar with avatar (desktop) */}
+        <div className="hidden md:flex w-72 shrink-0 border-r overflow-y-auto p-4 flex-col gap-4" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
+          <TalkingHead3DAvatar
+            isSpeaking={isSpeaking}
+            isListening={isListening}
+            displayName="Novate Abby"
+            speakingAudioRef={speakingAudioRef}
+          />
+        </div>
         <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto px-4 py-5">
           <div className="max-w-2xl mx-auto space-y-4">

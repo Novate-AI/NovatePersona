@@ -7,7 +7,7 @@ import { saveResult, saveSession, loadSession, clearSession } from "../lib/progr
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 import { useIsMobile } from "../hooks/useIsMobile";
-import TalkingAvatar from "../components/novapatient/TalkingAvatar";
+import TalkingHead3DAvatar from "../components/novapatient/TalkingHead3DAvatar";
 import ConsultationTimer from "../components/novapatient/ConsultationTimer";
 import HistoryChecklist from "../components/novapatient/HistoryChecklist";
 import FeedbackCard from "../components/novapatient/FeedbackCard";
@@ -342,12 +342,12 @@ export default function NovaPatientChat() {
         {/* Sidebar (desktop) */}
         {!isMobile && (
           <div className="w-72 shrink-0 border-r overflow-y-auto p-4 space-y-4" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-            <TalkingAvatar
+            <TalkingHead3DAvatar
               isSpeaking={isSpeaking}
               isListening={isListening}
-              scenarioName={scenario.name}
-              patientGender={scenario.patient.gender}
-              patientName={scenario.patient.name}
+              displayName={scenario.patient.name}
+              body={scenario.patient.gender === "Male" ? "M" : "F"}
+              speakingAudioRef={speakingAudioRef}
             />
 
             <div className="border-t pt-4" style={{ borderColor: 'var(--card-border)' }}>
@@ -369,13 +369,13 @@ export default function NovaPatientChat() {
           {/* Mobile header strip */}
           {isMobile && (
             <div className="shrink-0 border-b p-3 space-y-3" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-              <TalkingAvatar
+              <TalkingHead3DAvatar
                 isSpeaking={isSpeaking}
                 isListening={isListening}
-                scenarioName={scenario.name}
-                patientGender={scenario.patient.gender}
-                patientName={scenario.patient.name}
+                displayName={scenario.patient.name}
+                body={scenario.patient.gender === "Male" ? "M" : "F"}
                 compact
+                speakingAudioRef={speakingAudioRef}
               />
               <div className="flex items-center justify-between">
                 <ConsultationTimer durationSeconds={initialDuration} running={timerRunning} onTimeUp={handleTimeUp} />

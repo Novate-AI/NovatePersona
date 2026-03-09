@@ -4,6 +4,8 @@ interface PatientAvatarProps {
   className?: string;
   /** Unique seed for deterministic realistic avatar (e.g. scenarioCode-patientName). When provided, uses photo; otherwise falls back to SVG. */
   seed?: string;
+  /** 0–1 mouth openness for lip-sync. When provided, SVG mouth animates with audio. Ignored when seed (photo) is used. */
+  mouthOpen?: number;
 }
 
 function hashSeed(seed: string): number {
@@ -12,10 +14,10 @@ function hashSeed(seed: string): number {
   return Math.abs(h) % 100;
 }
 
-export default function PatientAvatar({ gender, size = 120, className = "", seed }: PatientAvatarProps) {
+export default function PatientAvatar({ gender, size = 120, className = "", seed, mouthOpen }: PatientAvatarProps) {
   const isMale = gender === "Male";
 
-  if (seed) {
+  if (seed && mouthOpen == null) {
     const id = hashSeed(seed);
     const path = isMale ? "men" : "women";
     const src = `https://randomuser.me/api/portraits/med/${path}/${id}.jpg`;
@@ -97,8 +99,18 @@ export default function PatientAvatar({ gender, size = 120, className = "", seed
       {/* Nose */}
       <path d="M58 50 Q60 54 62 50" strokeWidth="1.2" strokeLinecap="round" className="stroke-amber-400 dark:stroke-amber-600" fill="none" />
 
-      {/* Mouth - slight smile */}
-      <path d="M52 58 Q60 64 68 58" strokeWidth="1.5" strokeLinecap="round" className="stroke-rose-400 dark:stroke-rose-500" fill="none" />
+      {/* Mouth - lip-sync: open ellipse when mouthOpen > 0, else slight smile */}
+      {mouthOpen != null && mouthOpen > 0.03 ? (
+        <ellipse
+          cx="60"
+          cy="61"
+          rx="6"
+          ry={Math.max(0.5, mouthOpen * 4)}
+          className="fill-rose-400 dark:fill-rose-500"
+        />
+      ) : (
+        <path d="M52 58 Q60 64 68 58" strokeWidth="1.5" strokeLinecap="round" className="stroke-rose-400 dark:stroke-rose-500" fill="none" />
+      )}
 
       {/* Hospital wristband */}
       <rect x="84" y="94" width="8" height="3" rx="1.5" className="fill-white dark:fill-slate-300" />
