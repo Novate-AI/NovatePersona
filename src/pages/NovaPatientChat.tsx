@@ -1,13 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { memo, Suspense, lazy, useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { getScenario } from "../lib/scenarios";
 import { streamChat, type Msg } from "../lib/streamChat";
 import { createChecklist, updateChecklist, getCompletionPercentage, evaluateConsultation, type OsceEvaluation, type ChecklistCategory } from "../lib/osce";
 import { saveResult, saveSession, loadSession, clearSession } from "../lib/progress";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
-import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
+import { useSpeechSynthesis, type TtsPlaybackHandle } from "../hooks/useSpeechSynthesis";
 import { useIsMobile } from "../hooks/useIsMobile";
-import TalkingHead3DAvatar from "../components/novapatient/TalkingHead3DAvatar";
 import ConsultationTimer from "../components/novapatient/ConsultationTimer";
 import HistoryChecklist from "../components/novapatient/HistoryChecklist";
 import FeedbackCard from "../components/novapatient/FeedbackCard";
@@ -41,6 +40,60 @@ const PATIENT_FIRST_LINE: Record<string, string> = {
 };
 
 type Phase = "active" | "evaluating" | "feedback";
+
+const TalkingHead3DAvatar = lazy(() => import("../components/novapatient/TalkingHead3DAvatar"));
+
+type ChatMessageItemProps = {
+  message: Msg;
+  onSpeak: (text: string) => void;
+  isStreaming?: boolean;
+};
+
+function AvatarFallback({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div
+        className={`relative w-full ${compact ? "h-32" : "h-64"} rounded-2xl overflow-hidden border flex items-center justify-center`}
+        style={{ borderColor: "var(--card-border)", background: "var(--glass-bg)" }}
+      >
+        <div className="h-6 w-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+      <div className="text-center space-y-1">
+        <p className="text-sm font-semibold text-primary">Loading avatar...</p>
+      </div>
+    </div>
+  );
+}
+
+const ChatMessageItem = memo(function ChatMessageItem({ message, onSpeak, isStreaming = false }: ChatMessageItemProps) {
+  return (
+    <div className={`flex gap-3 ${message.role === "user" ? "justify-end" : ""}`}>
+      {message.role === "assistant" && (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
+      )}
+      <div className={`rounded-xl px-4 py-2.5 max-w-[80%] text-sm ${
+        message.role === "user"
+          ? "bg-emerald-600 text-white rounded-tr-none"
+          : "rounded-tl-none text-primary"
+      }`} style={message.role === "assistant" ? { background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', border: '1px solid var(--card-border)' } : undefined}>
+        {message.role === "assistant" ? (
+          <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0 text-sm">
+            {isStreaming ? (
+              <p className="whitespace-pre-wrap my-0">{message.content}</p>
+            ) : (
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            )}
+          </div>
+        ) : <p>{message.content}</p>}
+      </div>
+      {message.role === "assistant" && (
+        <button onClick={() => onSpeak(message.content)} className="btn-ghost h-7 w-7 p-0 shrink-0 mt-0.5" title="Speak">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
+        </button>
+      )}
+    </div>
+  );
+});
 
 function getSpeechCode(lang: string): string {
   const found = OSCE_LANGUAGES.find((l) => l.code === lang);
@@ -82,10 +135,22 @@ export default function NovaPatientChat() {
   const speechCode = getSpeechCode(lang);
   const recognitionCode = getRecognitionCode(lang);
   const patientFirstLine = PATIENT_FIRST_LINE[lang] ?? PATIENT_FIRST_LINE.en;
-  const speakingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsPlaybackRef = useRef<TtsPlaybackHandle | null>(null);
 
   const { isListening, transcript, start: startListening, stop: stopListening, setTranscript } = useSpeechRecognition({ lang: recognitionCode });
-  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(speechCode, speakingAudioRef);
+  const { speak, speakQueued, stop: stopSpeaking, isSpeaking, unlockAudio } = useSpeechSynthesis(speechCode, undefined, ttsPlaybackRef);
+
+  const upsertAssistantMessage = useCallback((content: string) => {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === "assistant") {
+        const next = prev.slice();
+        next[next.length - 1] = { ...last, content };
+        return next;
+      }
+      return [...prev, { role: "assistant", content }];
+    });
+  }, []);
 
   const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
@@ -133,11 +198,7 @@ export default function NovaPatientChat() {
       language: lang,
       onDelta: (chunk) => {
         assistantSoFar += chunk;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
-          return [...prev, { role: "assistant", content: assistantSoFar }];
-        });
+        upsertAssistantMessage(assistantSoFar);
       },
       onDone: () => {
         setIsLoading(false);
@@ -145,7 +206,7 @@ export default function NovaPatientChat() {
       },
       onError: () => { setIsLoading(false); initialGreetingSent.current = false; },
     }).catch(() => { setIsLoading(false); initialGreetingSent.current = false; });
-  }, [hasStartedConsultation, sessionChecked, phase, scenarioCode, scenario, messages.length, lang]);
+  }, [hasStartedConsultation, sessionChecked, phase, scenarioCode, scenario, messages.length, lang, upsertAssistantMessage]);
 
   const send = useCallback(async (text: string) => {
     if (!text.trim() || isLoading || !scenario || phase !== "active") return;
@@ -163,17 +224,27 @@ export default function NovaPatientChat() {
     const allMessages = [...messages, userMsg];
 
     try {
+      let pendingUiText = "";
+      let frame: number | null = null;
+      const flushAssistantUi = () => {
+        if (pendingUiText) upsertAssistantMessage(pendingUiText);
+      };
+      const scheduleAssistantUi = () => {
+        if (frame !== null) return;
+        frame = requestAnimationFrame(() => {
+          frame = null;
+          flushAssistantUi();
+        });
+      };
+
       await streamChat({
         messages: allMessages,
         scenario: scenarioCode,
         language: lang,
         onDelta: (chunk) => {
           assistantSoFar += chunk;
-          setMessages(prev => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "assistant") return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantSoFar } : m);
-            return [...prev, { role: "assistant", content: assistantSoFar }];
-          });
+          pendingUiText = assistantSoFar;
+          scheduleAssistantUi();
           // Speak each sentence as it completes so first speech is closer to user gesture (helps browser autoplay)
           if (assistantSoFar.length > spokenUpTo && /[.!?]\s*$/.test(assistantSoFar)) {
             const tail = assistantSoFar.slice(spokenUpTo).trim();
@@ -184,14 +255,27 @@ export default function NovaPatientChat() {
           }
         },
         onDone: () => {
+          if (frame !== null) {
+            cancelAnimationFrame(frame);
+            frame = null;
+          }
+          flushAssistantUi();
           setIsLoading(false);
           const remainder = assistantSoFar.slice(spokenUpTo).trim();
           if (remainder) speakQueued(remainder);
         },
-        onError: (err) => { setIsLoading(false); setError(err); },
+        onError: (err) => {
+          if (frame !== null) {
+            cancelAnimationFrame(frame);
+            frame = null;
+          }
+          flushAssistantUi();
+          setIsLoading(false);
+          setError(err);
+        },
       });
     } catch { setIsLoading(false); setError("Connection error. Please try again."); }
-  }, [isLoading, messages, scenario, scenarioCode, lang, setTranscript, speak, speakQueued, phase]);
+  }, [isLoading, messages, scenario, scenarioCode, lang, setTranscript, speakQueued, phase, upsertAssistantMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } };
 
@@ -273,7 +357,7 @@ export default function NovaPatientChat() {
     return (
       <div className="min-h-screen flex flex-col">
         {/* Top bar with nav and back */}
-        <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+        <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
           <div className="flex items-center gap-3">
             <ProductNav current="NovaPatient" />
             <div className="h-4 w-px bg-(--card-border)" />
@@ -313,7 +397,7 @@ export default function NovaPatientChat() {
       />
 
       {/* Top bar */}
-      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center gap-3">
           <ProductNav current="NovaPatient" />
           <div className="h-4 w-px bg-(--card-border)" />
@@ -341,14 +425,16 @@ export default function NovaPatientChat() {
       <div className="flex-1 flex min-h-0">
         {/* Sidebar (desktop) */}
         {!isMobile && (
-          <div className="w-72 shrink-0 border-r overflow-y-auto p-4 space-y-4" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-            <TalkingHead3DAvatar
-              isSpeaking={isSpeaking}
-              isListening={isListening}
-              displayName={scenario.patient.name}
-              body={scenario.patient.gender === "Male" ? "M" : "F"}
-              speakingAudioRef={speakingAudioRef}
-            />
+          <div className="w-72 shrink-0 border-r overflow-y-auto p-4 space-y-4" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
+            <Suspense fallback={<AvatarFallback />}>
+              <TalkingHead3DAvatar
+                ref={ttsPlaybackRef}
+                isSpeaking={isSpeaking}
+                isListening={isListening}
+                displayName={scenario.patient.name}
+                body={scenario.patient.gender === "Male" ? "M" : "F"}
+              />
+            </Suspense>
 
             <div className="border-t pt-4" style={{ borderColor: 'var(--card-border)' }}>
               <PatientBrief patient={scenario.patient} />
@@ -368,15 +454,17 @@ export default function NovaPatientChat() {
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Mobile header strip */}
           {isMobile && (
-            <div className="shrink-0 border-b p-3 space-y-3" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-              <TalkingHead3DAvatar
-                isSpeaking={isSpeaking}
-                isListening={isListening}
-                displayName={scenario.patient.name}
-                body={scenario.patient.gender === "Male" ? "M" : "F"}
-                compact
-                speakingAudioRef={speakingAudioRef}
-              />
+            <div className="shrink-0 border-b p-3 space-y-3" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
+              <Suspense fallback={<AvatarFallback compact />}>
+                <TalkingHead3DAvatar
+                  ref={ttsPlaybackRef}
+                  isSpeaking={isSpeaking}
+                  isListening={isListening}
+                  displayName={scenario.patient.name}
+                  body={scenario.patient.gender === "Male" ? "M" : "F"}
+                  compact
+                />
+              </Suspense>
               <div className="flex items-center justify-between">
                 <ConsultationTimer durationSeconds={initialDuration} running={timerRunning} onTimeUp={handleTimeUp} />
                 <button onClick={() => setShowChecklist(!showChecklist)} className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
@@ -394,7 +482,7 @@ export default function NovaPatientChat() {
             {messages.length === 0 && (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
-                <div className="rounded-xl rounded-tl-none px-4 py-3 max-w-[80%] text-sm space-y-3" style={{ background: 'var(--subtle-bg)' }}>
+                <div className="rounded-xl rounded-tl-none px-4 py-3 max-w-[80%] text-sm space-y-3" style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', border: '1px solid var(--card-border)' }}>
                   <p className="text-primary text-sm">{patientFirstLine}</p>
                   {!hasStartedConsultation ? (
                     <button
@@ -416,33 +504,18 @@ export default function NovaPatientChat() {
             )}
 
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : ""}`}>
-                {m.role === "assistant" && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
-                )}
-                <div className={`rounded-xl px-4 py-2.5 max-w-[80%] text-sm ${
-                  m.role === "user"
-                    ? "bg-emerald-600 text-white rounded-tr-none"
-                    : "rounded-tl-none text-primary"
-                }`} style={m.role === "assistant" ? { background: 'var(--subtle-bg)' } : undefined}>
-                  {m.role === "assistant" ? (
-                    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0 text-sm">
-                      <ReactMarkdown>{m.content}</ReactMarkdown>
-                    </div>
-                  ) : <p>{m.content}</p>}
-                </div>
-                {m.role === "assistant" && (
-                  <button onClick={() => speak(m.content)} className="btn-ghost h-7 w-7 p-0 shrink-0 mt-0.5" title="Speak">
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
-                  </button>
-                )}
-              </div>
+              <ChatMessageItem
+                key={i}
+                message={m}
+                onSpeak={speak}
+                isStreaming={isLoading && i === messages.length - 1 && m.role === "assistant"}
+              />
             ))}
 
             {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 text-xs font-bold text-emerald-500 mt-0.5">P</div>
-                <div className="rounded-xl rounded-tl-none px-4 py-3" style={{ background: 'var(--subtle-bg)' }}>
+                <div className="rounded-xl rounded-tl-none px-4 py-3" style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', border: '1px solid var(--card-border)' }}>
                   <div className="flex gap-1"><span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: "0ms" }} /><span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: "150ms" }} /><span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: "300ms" }} /></div>
                 </div>
               </div>
@@ -453,7 +526,7 @@ export default function NovaPatientChat() {
           </div>
 
           {/* Input */}
-          <div className="shrink-0 border-t p-3 safe-bottom" style={{ borderColor: 'var(--card-border)' }}>
+          <div className="shrink-0 border-t p-3 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
             <div className="flex gap-2 items-end max-w-3xl mx-auto">
               <button
                 onClick={toggleMic}
@@ -474,7 +547,7 @@ export default function NovaPatientChat() {
                 placeholder="Ask the patient a question..."
                 rows={1}
                 className="flex-1 min-h-[40px] max-h-28 resize-none rounded-lg border px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/50 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
+                style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}
               />
               <button
                 onClick={() => send(input)}

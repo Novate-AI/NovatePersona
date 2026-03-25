@@ -32,6 +32,9 @@ const ResetPassword = lazyRetry(() => import('./pages/auth/ResetPassword'))
 const AuthCallback = lazyRetry(() => import('./pages/auth/AuthCallback'))
 const Leaderboard = lazyRetry(() => import('./pages/Leaderboard'))
 const Dashboard = lazyRetry(() => import('./pages/Dashboard'))
+const LipSyncDiagnostic = import.meta.env.DEV
+  ? lazyRetry(() => import('./pages/dev/LipSyncDiagnostic'))
+  : null
 
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
@@ -242,6 +245,10 @@ export default function App() {
             <Route path="/nova-patient/chat" element={<ProtectedRoute><NovaPatientChat /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+
+            {import.meta.env.DEV && LipSyncDiagnostic && (
+              <Route path="/dev/lip-sync" element={<LipSyncDiagnostic />} />
+            )}
 
             <Route path="*" element={<NotFound />} />
           </Routes>

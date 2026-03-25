@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { fetchOpenAiThenGroq } from "../_shared/llm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,29 +81,28 @@ SUGGESTIONS:
 Make sure the suggestions match the ${level} CEFR level in complexity.`;
     }
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 1024,
-      }),
+    const response = await fetchOpenAiThenGroq({
+      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 1024,
     });
 
     if (!response.ok) {
+      if (response.status === 503) {
+        const err = await response.json();
+        return new Response(JSON.stringify(err), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const t = await response.text();
-      console.error("Groq error:", response.status, t);
+      console.error("LLM error:", response.status, t);
       return new Response(JSON.stringify({ error: "AI error" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

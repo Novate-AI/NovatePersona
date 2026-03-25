@@ -59,7 +59,7 @@ export default function NovaPatientScenarios() {
       {blocked && <UpgradeWall onClose={dismissWall} sessionsUsed={sessionsUsed} />}
 
       {/* Top bar */}
-      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center gap-3">
           <ProductNav current="NovaPatient" />
           <span className="badge bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -71,7 +71,7 @@ export default function NovaPatientScenarios() {
 
       {/* Fixed Begin bar at bottom of screen when a card is selected — no scroll needed */}
       {selected && (
-        <div className="fixed bottom-0 left-0 right-0 z-10 border-t flex items-center justify-center gap-3 py-3 px-4 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+        <div className="fixed bottom-0 left-0 right-0 z-10 border-t flex items-center justify-center gap-3 py-3 px-4 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
           <label className="flex items-center gap-2 text-sm text-secondary">
             <span>Patient speaks:</span>
             <select
@@ -160,7 +160,7 @@ export default function NovaPatientScenarios() {
                   className={`flex items-center gap-3 rounded-lg border px-4 py-3.5 text-left transition-all hover:border-(--card-hover-border) flex-1 min-w-0 ${
                     r.priority === 'high' ? 'border-amber-500/30 bg-amber-500/5' : ''
                   }`}
-                  style={r.priority !== 'high' ? { borderColor: 'var(--card-border)', background: 'var(--card-bg)' } : undefined}
+                  style={r.priority !== 'high' ? { borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' } : undefined}
                 >
                   <PatientAvatar gender={scenario.patient.gender} size={32} className="shrink-0" seed={`${r.scenarioCode}-${scenario.patient.name}`} />
                   <div className="min-w-0 flex-1">

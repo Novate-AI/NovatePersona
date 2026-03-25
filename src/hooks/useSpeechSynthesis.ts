@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, type MutableRefObject } from "react";
+import { cleanTextForTts } from "../lib/ttsText";
 
 /**
  * Speech synthesis: backend TTS (Piper/Edge) when available, else Web Speech API.
@@ -26,15 +27,32 @@ const TTS_URL = `${BACKEND_URL}/api/tts`;
 /** Piper voice for en-GB: English (England) female. Override via VITE_TTS_VOICE_EN_GB. */
 const VOICE_EN_GB = import.meta.env.VITE_TTS_VOICE_EN_GB || "en_GB-cori";
 
-/** Ref to the currently playing Audio element (backend TTS only). Used for lip-sync analysis. */
-export type SpeakingAudioRef = import("react").MutableRefObject<HTMLAudioElement | null>;
+/** Ref to the currently playing Audio element (backend TTS only). Used for 2D lip-sync; optional if using TtsPlaybackHandle. */
+export type SpeakingAudioRef = MutableRefObject<HTMLAudioElement | null>;
 
-export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAudioRef) {
+/** TalkingHead3D: play TTS with text-timed visemes (preferred over raw audio analysis). */
+export type TtsPlaybackHandle = {
+  playBlob: (blob: Blob, text: string) => Promise<void>;
+  stop: () => void;
+  /** Kick off avatar + AudioContext init early (call from a user gesture). */
+  warmup?: () => void;
+  /** Dev/diagnostic: max viseme weight on the avatar (non-zero while lip-sync is driving the mouth). */
+  getDebugLipSummary?: () => { maxViseme: string; maxValue: number } | null;
+};
+
+export type TtsPlaybackRef = MutableRefObject<TtsPlaybackHandle | null>;
+
+export function useSpeechSynthesis(
+  lang = "en-GB",
+  speakingAudioRef?: SpeakingAudioRef,
+  ttsPlaybackRef?: TtsPlaybackRef
+) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const queueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
-  const ttsErrorRef = useRef(false);
-  const prefetchedRef = useRef<{ text: string; blob: Blob; url: string } | null>(null);
+  /** Consecutive backend TTS failures; skip prefetch when high to avoid slow retries. Resets on success or stop(). */
+  const ttsFailStreakRef = useRef(0);
+  const prefetchedRef = useRef<{ text: string; blob: Blob } | null>(null);
 
   const isSupported =
     typeof window !== "undefined" &&
@@ -79,10 +97,7 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
 
   const fetchTTSBlob = useCallback(
     async (text: string): Promise<Blob> => {
-      const cleaned = text
-        .replace(/\s*\([^)]*\)/g, "")
-        .replace(/\s{2,}/g, " ")
-        .trim();
+      const cleaned = cleanTextForTts(text);
       if (!cleaned) throw new Error("Empty text");
       const body: Record<string, string> = { text: cleaned, input: cleaned, lang };
       if (lang.toLowerCase().startsWith("en-gb")) body.voice = VOICE_EN_GB;
@@ -90,6 +105,7 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(12_000),
       });
       if (!res.ok) throw new Error("TTS failed");
       return res.blob();
@@ -99,10 +115,7 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
 
   const playWithBackendTTS = useCallback(
     async (text: string, blobOrNull?: Blob | null): Promise<void> => {
-      const cleaned = text
-        .replace(/\s*\([^)]*\)/g, "")
-        .replace(/\s{2,}/g, " ")
-        .trim();
+      const cleaned = cleanTextForTts(text);
       if (!cleaned) return;
 
       let blob: Blob;
@@ -111,6 +124,17 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
       } else {
         blob = await fetchTTSBlob(cleaned);
       }
+      if (ttsPlaybackRef) {
+        unlockAudio();
+        for (let i = 0; i < 80 && !ttsPlaybackRef.current; i++) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        if (ttsPlaybackRef.current) {
+          await ttsPlaybackRef.current.playBlob(blob, cleaned);
+          return;
+        }
+      }
+
       const url = URL.createObjectURL(blob);
       return new Promise((resolve, reject) => {
         const audio = new Audio(url);
@@ -126,13 +150,14 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
           reject(e);
         };
         unlockAudio();
-        // Yield one frame so avatar can connect audio for lip sync before playback starts
         requestAnimationFrame(() => {
-          audio.play().catch(reject);
+          requestAnimationFrame(() => {
+            audio.play().catch(reject);
+          });
         });
       });
     },
-    [fetchTTSBlob, speakingAudioRef]
+    [fetchTTSBlob, speakingAudioRef, ttsPlaybackRef]
   );
 
   const playWithWebSpeech = useCallback(
@@ -142,10 +167,7 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
           resolve();
           return;
         }
-        const cleaned = text
-          .replace(/\s*\([^)]*\)/g, "")
-          .replace(/\s{2,}/g, " ")
-          .trim();
+        const cleaned = cleanTextForTts(text);
         if (!cleaned) {
           resolve();
           return;
@@ -189,28 +211,22 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
     prefetchedRef.current = null;
     const trimmed = text.trim();
     const usePrefetched = prefetched && prefetched.text === trimmed;
-    if (usePrefetched && prefetched!.url) {
-      URL.revokeObjectURL(prefetched!.url);
-    }
 
-    // Prefetch next sentence in parallel while current plays
+    // Prefetch next sentence in parallel while current plays (skip if backend keeps failing)
     const nextText = queueRef.current[0]?.trim();
-    if (nextText && !ttsErrorRef.current) {
+    if (nextText && ttsFailStreakRef.current < 4) {
       fetchTTSBlob(nextText)
         .then((blob) => {
-          prefetchedRef.current = { text: nextText, blob, url: URL.createObjectURL(blob) };
+          prefetchedRef.current = { text: nextText, blob };
         })
         .catch(() => {});
     }
 
     try {
-      if (!ttsErrorRef.current) {
-        await playWithBackendTTS(text, usePrefetched ? prefetched!.blob : null);
-      } else {
-        throw new Error("Use Web Speech");
-      }
+      await playWithBackendTTS(text, usePrefetched ? prefetched!.blob : null);
+      ttsFailStreakRef.current = 0;
     } catch {
-      ttsErrorRef.current = true;
+      ttsFailStreakRef.current = Math.min(99, ttsFailStreakRef.current + 1);
       await playWithWebSpeech(text);
     }
     queueMicrotask(playNext);
@@ -224,11 +240,11 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
       queueRef.current.push(text);
       if (!isPlayingRef.current) {
         playNext();
-      } else if (isNext && !ttsErrorRef.current) {
+      } else if (isNext && ttsFailStreakRef.current < 4) {
         // New item is the immediate next; prefetch now to avoid gap between sentences.
         fetchTTSBlob(trimmed)
           .then((blob) => {
-            prefetchedRef.current = { text: trimmed, blob, url: URL.createObjectURL(blob) };
+            prefetchedRef.current = { text: trimmed, blob };
           })
           .catch(() => {});
       }
@@ -241,10 +257,14 @@ export function useSpeechSynthesis(lang = "en-GB", speakingAudioRef?: SpeakingAu
     isPlayingRef.current = false;
     setIsSpeaking(false);
     prefetchedRef.current = null;
+    ttsFailStreakRef.current = 0;
+    ttsPlaybackRef?.current?.stop();
+    speakingAudioRef?.current?.pause();
+    if (speakingAudioRef) speakingAudioRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
-  }, []);
+  }, [ttsPlaybackRef, speakingAudioRef]);
 
   const speak = useCallback(
     (text: string) => {

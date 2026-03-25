@@ -14,7 +14,7 @@
 
 - **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query
 - **Voice input:** Browser Web Speech API (ASR)
-- **AI replies:** Groq AI (Llama 3) via a local Node.js server.
+- **AI replies:** Python FastAPI backend — **OpenAI** first, **Groq** (Llama 3.3) as fallback (`NovatepersonaBackend/llm.py`).
 
 ## Quick start
 
@@ -36,9 +36,7 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Environment
 
-For the backend server, create a `.env` file in the `server` directory:
-
-- `GROQ_API_KEY` - Your Groq API key
+Configure the **Python backend** (`NovatepersonaBackend/.env`): `OPENAI_API_KEY` (primary), `GROQ_API_KEY` (fallback). See that folder’s README.
 
 ## Scripts
 

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { fetchOpenAiThenGroq } from "../_shared/llm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,26 +63,25 @@ RECOMMENDATIONS
 
 Note: Base your assessment strictly on the IELTS Speaking Band Descriptors. Be fair but honest.`;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Here is the IELTS Speaking test transcript:\n\n${transcript}` },
-        ],
-        temperature: 0.3,
-        max_tokens: 2048,
-      }),
+    const response = await fetchOpenAiThenGroq({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Here is the IELTS Speaking test transcript:\n\n${transcript}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 2048,
     });
 
     if (!response.ok) {
+      if (response.status === 503) {
+        const err = await response.json();
+        return new Response(JSON.stringify(err), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const t = await response.text();
-      console.error("Groq error:", response.status, t);
+      console.error("LLM error:", response.status, t);
       return new Response(JSON.stringify({ error: "Failed to generate feedback" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

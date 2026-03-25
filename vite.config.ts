@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
@@ -14,13 +15,17 @@ export default defineConfig({
       'react/jsx-runtime': path.resolve(__dirname, 'node_modules/react/jsx-runtime'),
       'react/jsx-dev-runtime': path.resolve(__dirname, 'node_modules/react/jsx-dev-runtime'),
     },
-    dedupe: ['react', 'react-dom', 'react-router-dom'],
+    dedupe: ['react', 'react-dom', 'react-router-dom', 'three'],
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom'],
+    include: ['react', 'react-dom', 'react-router-dom', 'three'],
   },
   server: {
     port: 5173,
     strictPort: false,
+  },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
   },
 })

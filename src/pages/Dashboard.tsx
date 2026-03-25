@@ -40,7 +40,7 @@ interface DashboardData {
 }
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
-  return <div className={`rounded-lg animate-pulse ${className}`} style={{ background: 'var(--subtle-bg)' }} />
+  return <div className={`rounded-lg animate-pulse ${className}`} style={{ background: 'var(--glass-bg)' }} />
 }
 
 function LoadingSkeleton() {
@@ -182,7 +182,7 @@ export default function Dashboard() {
             )}
           </span>
         </div>
-        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
+        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--glass-bg)' }}>
           <div
             className={`h-full rounded-full transition-all duration-500 ${
               isPaid
@@ -358,7 +358,7 @@ export default function Dashboard() {
                     {d.count > 0 ? `${d.avg}/10` : '—'}
                   </span>
                 </div>
-                <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
+                <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--glass-bg)' }}>
                   <div
                     className={`h-full rounded-full transition-all duration-700 ${d.count > 0 ? domainColor(d.avg) : ''}`}
                     style={{ width: d.count > 0 ? `${(d.avg / 10) * 100}%` : '0%' }}

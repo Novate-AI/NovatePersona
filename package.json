@@ -8,6 +8,8 @@
     "dev:fresh": "node -e \"try{require('fs').rmSync('node_modules/.vite',{recursive:true,force:true})}catch(e){}\" && vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "deploy:novatutor": "dotenv -e .env -- supabase functions deploy novatutor-chat --project-ref hgjuawsdaikusovlbave"
   },
   "devDependencies": {
@@ -20,7 +22,8 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^1.13.6",

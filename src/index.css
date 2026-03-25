@@ -7,21 +7,24 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Outfit', system-ui, sans-serif;
 
-  /* Brand — violet as primary (premium, differentiating) */
-  --color-brand-50:  #f5f3ff;
-  --color-brand-100: #ede9fe;
-  --color-brand-200: #ddd6fe;
-  --color-brand-300: #c4b5fd;
-  --color-brand-400: #a78bfa;
-  --color-brand-500: #8b5cf6;
-  --color-brand-600: #7c3aed;
-  --color-brand-700: #6d28d9;
-  --color-brand-800: #5b21b6;
-  --color-brand-900: #4c1d95;
+  /* Brand — Novate blue dominant palette */
+  --color-brand-50:  #eff8ff;
+  --color-brand-100: #dbeeff;
+  --color-brand-200: #bfe0ff;
+  --color-brand-300: #93c8ff;
+  --color-brand-400: #5aa8ff;
+  --color-brand-500: #2b82f6;
+  --color-brand-600: #1f6fe0;
+  --color-brand-700: #1c5cb9;
+  --color-brand-800: #1c4f99;
+  --color-brand-900: #1b457d;
+  --color-accent-orange: #ff7d55;
+  --color-accent-teal: #35bbcf;
+  --color-accent-yellow: #f4d129;
 
   /* Per-product accent colors */
   --color-persona-tutor:   #2563eb;
-  --color-persona-examiner: #7c3aed;
+  --color-persona-examiner: #22b8cf;
   --color-persona-patient: #059669;
 }
 
@@ -29,29 +32,29 @@
 @layer base {
   :root {
     --bg-main:          #ffffff;
-    --bg-subtle:        #f8fafc;
-    --text-main:        #52525b;
-    --text-strong:      #18181b;
-    --glass-bg:         rgba(255, 255, 255, 0.9);
+    --bg-subtle:        #f6f9ff;
+    --text-main:        #47607d;
+    --text-strong:      #102341;
+    --glass-bg:         rgba(255, 255, 255, 0.92);
     --card-bg:          #ffffff;
-    --card-border:      #e4e4e7;
-    --card-hover-border:#a1a1aa;
-    --subtle-bg:        #f4f4f5;
-    --nav-bg:           rgba(255, 255, 255, 0.85);
+    --card-border:      #d9e6f8;
+    --card-hover-border:#86b8f0;
+    --subtle-bg:        #f0f6ff;
+    --nav-bg:           rgba(255, 255, 255, 0.92);
     scroll-behavior: smooth;
   }
 
   .dark {
-    --bg-main:          #09090b;
-    --bg-subtle:        #111113;
-    --text-main:        #a1a1aa;
-    --text-strong:      #fafafa;
-    --glass-bg:         rgba(17, 17, 19, 0.85);
-    --card-bg:          #111113;
-    --card-border:      rgba(255, 255, 255, 0.07);
-    --card-hover-border:rgba(255, 255, 255, 0.18);
-    --subtle-bg:        #18181b;
-    --nav-bg:           rgba(9, 9, 11, 0.85);
+    --bg-main:          #0e1c34;
+    --bg-subtle:        #132644;
+    --text-main:        #b9d1ef;
+    --text-strong:      #f3f8ff;
+    --glass-bg:         rgba(19, 38, 68, 0.75);
+    --card-bg:          #11253f;
+    --card-border:      rgba(137, 184, 235, 0.28);
+    --card-hover-border:rgba(137, 184, 235, 0.48);
+    --subtle-bg:        #173155;
+    --nav-bg:           rgba(14, 28, 52, 0.86);
   }
 
   body {
@@ -71,7 +74,7 @@
 
   /* Focus visible — accessibility */
   :focus-visible {
-    outline: 2px solid #8b5cf6;
+    outline: 2px solid var(--color-brand-500, #2b82f6);
     outline-offset: 2px;
     border-radius: 4px;
   }
@@ -109,31 +112,44 @@
   /* Section label (e.g. "WHY CHOOSE US") */
   .section-label {
     @apply text-xs font-bold uppercase tracking-widest;
-    color: var(--color-brand-500, #8b5cf6);
+    color: var(--color-brand-500, #2b82f6);
   }
 
   /* Gradient text */
   .gradient-text {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, #8b5cf6, #06b6d4);
+    background-image: linear-gradient(
+      135deg,
+      var(--color-brand-500, #2b82f6),
+      var(--color-accent-teal, #35bbcf),
+      var(--color-accent-orange, #ff7d55),
+      var(--color-accent-yellow, #f4d129)
+    );
   }
 
   /* Glows */
-  .glow-brand   { box-shadow: 0 0 40px -10px rgba(139, 92, 246, 0.35); }
+  .glow-brand   { box-shadow: 0 0 40px -10px rgba(43, 130, 246, 0.35); }
   .glow-emerald { box-shadow: 0 0 40px -10px rgba(16, 185, 129, 0.35); }
   .glow-blue    { box-shadow: 0 0 40px -10px rgba(37, 99, 235, 0.35);  }
+  .glow-sun     { box-shadow: 0 0 42px -14px rgba(244, 209, 41, 0.38); }
+  .glow-coral   { box-shadow: 0 0 42px -14px rgba(255, 125, 85, 0.35); }
 
   /* ── Buttons ── */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5
            text-sm font-semibold text-white transition-all duration-150
            active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 0 0 0 rgba(139,92,246,0);
+    background: linear-gradient(
+      135deg,
+      var(--color-brand-500, #2b82f6) 0%,
+      var(--color-accent-teal, #35bbcf) 68%,
+      var(--color-accent-orange, #ff7d55) 100%
+    );
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 0 0 0 rgba(43,130,246,0);
   }
   .btn-primary:hover {
     filter: brightness(1.08);
-    box-shadow: 0 4px 12px -2px rgba(139, 92, 246, 0.45);
+    box-shadow: 0 4px 12px -2px rgba(43, 130, 246, 0.45);
   }
 
   .btn-secondary {

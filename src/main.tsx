@@ -40,7 +40,14 @@ createRoot(document.getElementById('root')!).render(
 )
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
-  })
+  if (import.meta.env.DEV) {
+    // Unregister stale service workers during development to avoid FetchEvent errors.
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister())
+    })
+  } else {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
+    })
+  }
 }

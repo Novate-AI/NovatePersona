@@ -4,7 +4,7 @@ import TalkingHead3DAvatar from '../components/novapatient/TalkingHead3DAvatar'
 import UpgradeWall from '../components/UpgradeWall'
 import { useSessionGate } from '../hooks/useSessionGate'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
-import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis'
+import { useSpeechSynthesis, type TtsPlaybackHandle } from '../hooks/useSpeechSynthesis'
 import { getSpeakableText } from '../lib/chatHelpers'
 import { pickPart1Questions, pickPart2Question, pickPart3Questions } from '../lib/ieltsQuestions'
 import type { IELTSPart2Question } from '../lib/ieltsQuestions'
@@ -65,8 +65,8 @@ export default function NovateExaminer() {
   const inTimedWindowRef = useRef(false)
 
   // TTS
-  const speakingAudioRef = useRef<HTMLAudioElement | null>(null)
-  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio } = useSpeechSynthesis('en-GB', speakingAudioRef)
+  const ttsPlaybackRef = useRef<TtsPlaybackHandle | null>(null)
+  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio } = useSpeechSynthesis('en-GB', undefined, ttsPlaybackRef)
   const spokenUpToRef = useRef(0)
   const isSpeakingRef = useRef(false)
   const isLoadingRef = useRef(false)
@@ -453,7 +453,7 @@ export default function NovateExaminer() {
     return (
       <div className="h-screen flex flex-col">
         {blocked && <UpgradeWall onClose={dismissWall} sessionsUsed={sessionsUsed} />}
-        <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+        <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
           <div className="flex items-center gap-3">
             <ProductNav current="NovateExaminer" />
             <span className="badge bg-violet-500/10 text-violet-600 dark:text-violet-400">
@@ -503,7 +503,7 @@ export default function NovateExaminer() {
 
             <div className="text-center">
               <button
-                onClick={() => { unlockAudio?.(); startTest(); }}
+                onClick={() => { unlockAudio?.(); ttsPlaybackRef.current?.warmup?.(); startTest(); }}
                 className="btn-primary inline-flex items-center gap-2.5 px-8 py-4 text-base font-semibold rounded-xl"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653z" /></svg>
@@ -524,7 +524,7 @@ export default function NovateExaminer() {
       {/* IELTS Feedback Modal */}
       {showFeedback && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div className="w-full max-w-2xl max-h-[85vh] rounded-2xl border overflow-hidden flex flex-col" style={{ background: 'var(--bg-main)', borderColor: 'var(--card-border)' }}>
+          <div className="w-full max-w-2xl max-h-[85vh] rounded-2xl border overflow-hidden flex flex-col" style={{ background: 'var(--glass-bg)', borderColor: 'var(--card-border)', backdropFilter: 'blur(12px)' }}>
             <div className="flex items-center justify-between p-5 border-b shrink-0" style={{ borderColor: 'var(--card-border)' }}>
               <h2 className="text-base font-bold text-primary">IELTS Speaking Test Report</h2>
               <button onClick={() => setShowFeedback(false)} className="btn-ghost h-8 w-8 p-0 rounded-full">
@@ -548,7 +548,7 @@ export default function NovateExaminer() {
       {/* Transcript Modal */}
       {showTranscript && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div className="w-full max-w-2xl max-h-[80vh] rounded-2xl border overflow-hidden flex flex-col" style={{ background: 'var(--bg-main)', borderColor: 'var(--card-border)' }}>
+          <div className="w-full max-w-2xl max-h-[80vh] rounded-2xl border overflow-hidden flex flex-col" style={{ background: 'var(--glass-bg)', borderColor: 'var(--card-border)', backdropFilter: 'blur(12px)' }}>
             <div className="flex items-center justify-between p-5 border-b shrink-0" style={{ borderColor: 'var(--card-border)' }}>
               <h2 className="text-base font-bold text-primary">Test Transcript</h2>
               <button onClick={() => setShowTranscript(false)} className="btn-ghost h-8 w-8 p-0 rounded-full">
@@ -568,7 +568,7 @@ export default function NovateExaminer() {
       )}
 
       {/* Top bar */}
-      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center gap-3">
           <ProductNav current="NovateExaminer" />
           <div className="hidden sm:block h-4 w-px" style={{ background: 'var(--card-border)' }} />
@@ -623,14 +623,14 @@ export default function NovateExaminer() {
       {/* Main */}
       <div className="flex-1 flex min-h-0">
         {/* Sidebar — avatar + exam tips (desktop) */}
-        <div className="hidden lg:flex w-64 shrink-0 border-r overflow-y-auto p-4 flex-col gap-5" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
+        <div className="hidden lg:flex w-64 shrink-0 border-r overflow-y-auto p-4 flex-col gap-5" style={{ borderColor: 'var(--card-border)', background: "radial-gradient(circle at 20% 0%, rgba(139, 92, 246, 0.18), transparent 60%)", backdropFilter: 'blur(12px)' }}>
           <TalkingHead3DAvatar
+            ref={ttsPlaybackRef}
             isSpeaking={isSpeaking}
             isListening={isListening}
             displayName="Tom"
             compact
             body="M"
-            speakingAudioRef={speakingAudioRef}
           />
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-widest text-secondary">Exam Tips</h3>
@@ -684,7 +684,7 @@ export default function NovateExaminer() {
                   m.role === 'user'
                     ? 'bg-violet-600 text-white rounded-tr-none'
                     : 'rounded-tl-none'
-                }`} style={m.role === 'assistant' ? { background: 'var(--subtle-bg)' } : undefined}>
+                }`} style={m.role === 'assistant' ? { background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', borderColor: 'var(--card-border)', border: '1px solid var(--card-border)' } : undefined}>
                   <p className={m.role === 'user' ? '' : 'text-primary'}>{m.content}</p>
                 </div>
                 {m.role === 'assistant' && (
@@ -702,7 +702,7 @@ export default function NovateExaminer() {
             {isLoading && (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-xs font-bold text-violet-500 mt-0.5">E</div>
-                <div className="rounded-xl rounded-tl-none px-4 py-3" style={{ background: 'var(--subtle-bg)' }}>
+                <div className="rounded-xl rounded-tl-none px-4 py-3" style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', borderColor: 'var(--card-border)', border: '1px solid var(--card-border)' }}>
                   <span className="flex gap-1">
                     <span className="h-2 w-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="h-2 w-2 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -724,7 +724,7 @@ export default function NovateExaminer() {
 
           {/* Input — hidden when test complete and no timer */}
           {!testFinished && (
-            <div className="shrink-0 border-t p-3 sm:p-4 flex items-end gap-2 sm:gap-3 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
+            <div className="shrink-0 border-t p-3 sm:p-4 flex items-end gap-2 sm:gap-3 safe-bottom" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
               {/* Mic status indicator */}
               {inTimedWindowRef.current && isListening && (
                 <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 flex items-center gap-1.5 text-xs text-red-500 bg-red-50 dark:bg-red-950/30 px-3 py-1 rounded-full border border-red-200 dark:border-red-800">
@@ -753,7 +753,7 @@ export default function NovateExaminer() {
                 placeholder="Type your response or use the mic..."
                 rows={1}
                 className="flex-1 min-h-[40px] max-h-28 resize-none rounded-lg border px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/50 focus:outline-none focus:ring-1 focus:ring-violet-500 focus:border-violet-500 transition-colors"
-                style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
+                style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}
               />
               <button
                 onClick={() => { handleManualResponse(typedInput); setTypedInput('') }}

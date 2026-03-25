@@ -42,8 +42,8 @@ export default class ErrorBoundary extends Component<Props, State> {
                 <summary className="text-xs text-secondary cursor-pointer hover:text-primary transition-colors">
                   Technical details
                 </summary>
-                <pre className="mt-2 text-xs text-red-500/80 bg-red-500/5 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words">
-                  {this.state.error.message}
+                <pre className="mt-2 text-xs text-red-500/80 bg-red-500/5 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap wrap-break-words">
+                          wrap-break-word
                 </pre>
               </details>
             )}

@@ -62,7 +62,7 @@ export default function ResetPassword() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 6 characters"
               className="w-full rounded-lg border px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/50 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-colors"
-              style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
+              style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}
             />
           </div>
 
@@ -77,7 +77,7 @@ export default function ResetPassword() {
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="••••••••"
               className="w-full rounded-lg border px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/50 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-colors"
-              style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
+              style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}
             />
           </div>
 

@@ -128,8 +128,8 @@ export default function Pricing() {
       </div>
 
       {/* Plan type toggle */}
-      <div className="flex justify-center mb-8">
-        <div className="inline-flex rounded-lg p-1" style={{ background: 'var(--subtle-bg)' }}>
+        <div className="flex justify-center mb-8">
+        <div className="inline-flex rounded-lg p-1" style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
           <button
             onClick={() => setPlanType('single')}
             className={`px-5 py-2.5 rounded-md text-sm font-semibold transition-all ${

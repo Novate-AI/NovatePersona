@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { fetchOpenAiThenGroq } from "../_shared/llm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,9 +43,6 @@ serve(async (req) => {
 
   try {
     const { messages, scenario } = await req.json();
-    const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
-    if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY is not configured");
-
     const patientProfile = scenarioProfiles[scenario];
     if (!patientProfile) {
       return new Response(JSON.stringify({ error: "Invalid scenario" }), {
@@ -55,25 +53,24 @@ serve(async (req) => {
 
     const systemPrompt = BASE_SYSTEM_PROMPT + "\nYour patient profile:\n" + patientProfile;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 512,
-      }),
+    const response = await fetchOpenAiThenGroq({
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages,
+      ],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 512,
     });
 
     if (!response.ok) {
+      if (response.status === 503) {
+        const err = await response.json();
+        return new Response(JSON.stringify(err), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
           status: 429,
@@ -87,7 +84,7 @@ serve(async (req) => {
         });
       }
       const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
+      console.error("LLM gateway error:", response.status, t);
       return new Response(JSON.stringify({ error: "AI error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

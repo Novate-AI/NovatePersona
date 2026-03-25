@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
-import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis'
+import { useSpeechSynthesis, type TtsPlaybackHandle } from '../hooks/useSpeechSynthesis'
 import { parseAssistantMessage, getSpeakableText } from '../lib/chatHelpers'
 import { generatePlainTextReport, generateTranscriptReport } from '../lib/pdfReport'
 import type { CEFRLevel } from '../types'
@@ -10,11 +10,16 @@ import ProductNav from '../components/ProductNav'
 import TalkingHead3DAvatar from '../components/novapatient/TalkingHead3DAvatar'
 import UpgradeWall from '../components/UpgradeWall'
 import { useSessionGate } from '../hooks/useSessionGate'
-import { t, getStarters, setUILocale, detectUILocale, type UILocale } from '../lib/i18n'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { t, setUILocale, detectUILocale, type UILocale } from '../lib/i18n'
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/api\/chat\/?$/, '')
 const CHAT_URL = `${BACKEND_URL}/api/chat/novatutor/stream`
 const FEEDBACK_URL = `${BACKEND_URL}/api/feedback`
+
+/** Dedupe auto-intro when React Strict Mode runs effects twice (same language/level). */
+let lastAutoIntroAt = 0
+let lastAutoIntroKey = ''
 
 const CEFR_LEVELS: { value: CEFRLevel; label: string }[] = [
   { value: 'A1', label: 'A1' }, { value: 'A2', label: 'A2' }, { value: 'B1', label: 'B1' },
@@ -24,6 +29,7 @@ const CEFR_LEVELS: { value: CEFRLevel; label: string }[] = [
 type Msg = { id: string; role: 'user' | 'assistant'; content: string; timestamp: number }
 
 export default function Novatutor() {
+  const isMobile = useIsMobile()
   const { blocked, sessionsUsed, dismissWall, tryStartSession } = useSessionGate()
   const sessionConsumedRef = useRef(false)
 
@@ -35,14 +41,28 @@ export default function Novatutor() {
   const [uiLocale, setUiLocale] = useState<UILocale>(detectUILocale)
   const [showSuggestions, setShowSuggestions] = useState(true)
   const [nativeLanguage, setNativeLanguage] = useState<string | null>(null)
-  const [autoIntroSent, setAutoIntroSent] = useState(false)
+  const [lessonStarted, setLessonStarted] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  /** false = Abby hero on top (default); true = sidebar split. In-session only — not persisted (no localStorage). */
+  const [showAbbyPanel, setShowAbbyPanel] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  /** User bubbles always visible when present; Abby’s replies only in split (sidebar) layout — Transcript modal has full thread. */
+  const showAssistantMessages = showAbbyPanel
+  /** Expand scroll region only when something is actually rendered (not assistant-only in focus mode). */
+  const hasVisibleThread = useMemo(
+    () =>
+      messages.some(
+        m => m.role === 'user' || (showAssistantMessages && m.role === 'assistant')
+      ),
+    [messages, showAssistantMessages]
+  )
   const spokenUpToRef = useRef(0)
   const isLoadingRef = useRef(false)
+  // Removed unused chat area toggle state
 
   useEffect(() => { isLoadingRef.current = isLoading }, [isLoading])
   useEffect(() => { setUILocale(uiLocale) }, [uiLocale])
@@ -61,9 +81,12 @@ export default function Novatutor() {
     return `${language}-${language.toUpperCase()}`
   }, [language])
 
-  const speakingAudioRef = useRef<HTMLAudioElement | null>(null)
-  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture } = useSpeechSynthesis(getLangSpeechCode(), speakingAudioRef)
-  const introTriggeredRef = useRef(false)
+  const ttsPlaybackRef = useRef<TtsPlaybackHandle | null>(null)
+  const { isSpeaking, speak, speakQueued, stop: stopSpeaking, unlockAudio, resumeFromUserGesture } = useSpeechSynthesis(
+    getLangSpeechCode(),
+    undefined,
+    ttsPlaybackRef
+  )
   const resumeOnGestureRef = useRef(false)
 
   const onVoiceResult = useCallback((transcript: string) => {
@@ -86,15 +109,18 @@ export default function Novatutor() {
     if (isSpeaking && isListening) stopListening()
   }, [isSpeaking, isListening, stopListening])
 
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isLoading])
+  useEffect(() => {
+    if (messages.length === 0) return
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isLoading])
 
   // Reset when language / level changes
   useEffect(() => {
     setMessages([])
     setNativeLanguage(null)
-    setAutoIntroSent(false)
+    setLessonStarted(false)
     sessionConsumedRef.current = false
-    introTriggeredRef.current = false
+    setChatError(null)
   }, [language, cefrLevel])
 
   // Batch 2 sentences per TTS call to reduce gaps between phrases (fewer round trips)
@@ -140,7 +166,8 @@ export default function Novatutor() {
     }
   }, [speakQueued])
 
-  const processStream = useCallback(async (body: ReadableStream<Uint8Array>, assistantSoFar: string): Promise<string> => {
+  const processStream = useCallback(
+    async (body: ReadableStream<Uint8Array>, assistantSoFar: string, opts: { renderMessages: boolean }): Promise<string> => {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let textBuffer = ''
@@ -167,13 +194,15 @@ export default function Novatutor() {
             assistantSoFar += content
             // Ensure Novate Abby persona (backend may still return old name)
             const snapshot = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
-            setMessages(prev => {
-              const last = prev[prev.length - 1]
-              if (last?.role === 'assistant') {
-                return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: snapshot } : m)
-              }
-              return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: snapshot, timestamp: Date.now() }]
-            })
+            if (opts.renderMessages) {
+              setMessages(prev => {
+                const last = prev[prev.length - 1]
+                if (last?.role === 'assistant') {
+                  return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: snapshot } : m)
+                }
+                return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: snapshot, timestamp: Date.now() }]
+              })
+            }
             checkAndQueueSentences(snapshot)
           }
         } catch {
@@ -183,7 +212,9 @@ export default function Novatutor() {
       }
     }
     return assistantSoFar
-  }, [checkAndQueueSentences])
+  },
+    [checkAndQueueSentences]
+  )
 
   // Only request translation when practicing a language other than English. When practicing English, don't show translation (avoids e.g. German translation when browser is German but user chose English).
   const effectiveNativeLanguage =
@@ -191,7 +222,25 @@ export default function Novatutor() {
       ? null
       : (nativeLanguage ?? (uiLocale !== language ? uiLocale : null))
 
-  const triggerIntro = useCallback(async () => {
+  const triggerIntro = useCallback(async (opts?: { source?: 'auto' | 'manual' }) => {
+    const source = opts?.source ?? 'manual'
+    if (isLoadingRef.current) return
+    if (source === 'auto') {
+      const introKey = `${language}:${cefrLevel}`
+      const t = Date.now()
+      if (lastAutoIntroKey === introKey && t - lastAutoIntroAt < 800) return
+      lastAutoIntroKey = introKey
+      lastAutoIntroAt = t
+    }
+    unlockAudio?.()
+    // Start loading the 3D avatar in parallel with the API call
+    ttsPlaybackRef.current?.warmup?.()
+    if (!sessionConsumedRef.current) {
+      if (!(await tryStartSession())) return
+      sessionConsumedRef.current = true
+    }
+    setChatError(null)
+    setLessonStarted(true)
     setIsLoading(true)
     stopSpeaking()
     spokenUpToRef.current = 0
@@ -202,19 +251,33 @@ export default function Novatutor() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [], language, nativeLanguage: effectiveNativeLanguage, showSuggestions: false, cefrLevel }),
       })
+      if (resp.status === 429) {
+        setChatError(t('tutor.errorRateLimit'))
+        sessionConsumedRef.current = false
+        return
+      }
+      if (resp.status === 402) {
+        setChatError(t('tutor.errorCredits'))
+        sessionConsumedRef.current = false
+        return
+      }
       if (!resp.ok || !resp.body) throw new Error('Failed to connect')
-      assistantSoFar = await processStream(resp.body, assistantSoFar)
+      // Hide the initial Abby greeting bubble by default (still speak it).
+      assistantSoFar = await processStream(resp.body, assistantSoFar, { renderMessages: false })
       assistantSoFar = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
       flushRemainingSpeech(assistantSoFar)
+      // Seed history so the next API call is not treated as "first message" and Abby has context.
+      const trimmed = assistantSoFar.trim()
+      if (trimmed) {
+        setMessages([{ id: crypto.randomUUID(), role: 'assistant', content: trimmed, timestamp: Date.now() }])
+      }
     } catch (e) {
       console.error('[Novatutor] triggerIntro failed:', e)
-      setMessages([{ id: 'welcome', role: 'assistant', content: "Hey! Novate Abby here. Ready to practice? Pick a topic or just start chatting.", timestamp: Date.now() }])
+      setChatError(t('tutor.errorConnect'))
     } finally {
       setIsLoading(false)
     }
-  }, [language, cefrLevel, effectiveNativeLanguage, stopSpeaking, processStream, flushRemainingSpeech])
-
-  // Do NOT auto-trigger intro: browsers block speech until user gesture. User must click "Start practice" so the greeting is voiced.
+  }, [language, cefrLevel, effectiveNativeLanguage, stopSpeaking, processStream, flushRemainingSpeech, unlockAudio, tryStartSession])
 
   // Resume any queued speech after first user gesture (if autoplay was blocked)
   useEffect(() => {
@@ -235,17 +298,14 @@ export default function Novatutor() {
     }
   }, [unlockAudio, resumeFromUserGesture])
 
-  const handleStartPractice = useCallback(() => {
-    unlockAudio?.()
-    resumeFromUserGesture?.()
-    setAutoIntroSent(true)
-    triggerIntro()
-  }, [triggerIntro, unlockAudio, resumeFromUserGesture])
+  // Removed unused handleStartPractice
 
   const sendMessage = useCallback(async (content: string) => {
     const text = content.trim()
     if (!text || isLoadingRef.current) return
     unlockAudio?.()
+    ttsPlaybackRef.current?.warmup?.()
+    setChatError(null)
     if (!sessionConsumedRef.current) {
       if (!(await tryStartSession())) return
       sessionConsumedRef.current = true
@@ -268,10 +328,18 @@ export default function Novatutor() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: currentMessages.map(m => ({ role: m.role, content: m.content })), language, nativeLanguage: effectiveNativeLanguage, showSuggestions, cefrLevel }),
       })
-      if (resp.status === 429) { console.warn('Rate limited'); setIsLoading(false); return }
-      if (resp.status === 402) { console.warn('Credits needed'); setIsLoading(false); return }
+      if (resp.status === 429) {
+        setChatError(t('tutor.errorRateLimit'))
+        sessionConsumedRef.current = false
+        return
+      }
+      if (resp.status === 402) {
+        setChatError(t('tutor.errorCredits'))
+        sessionConsumedRef.current = false
+        return
+      }
       if (!resp.ok || !resp.body) throw new Error('Failed to connect')
-      assistantSoFar = await processStream(resp.body, assistantSoFar)
+      assistantSoFar = await processStream(resp.body, assistantSoFar, { renderMessages: true })
       assistantSoFar = assistantSoFar.replace(/\bTom Holland\b/gi, 'Novate Abby')
       flushRemainingSpeech(assistantSoFar)
 
@@ -283,6 +351,7 @@ export default function Novatutor() {
       }
     } catch (e) {
       console.error(e)
+      setChatError(t('tutor.errorConnect'))
     } finally {
       setIsLoading(false)
     }
@@ -328,7 +397,6 @@ export default function Novatutor() {
   const corrections = messages.filter(m => m.role === 'assistant' && /(CORRECTIONS:|Correction:)/i.test(m.content)).length
   const turns = messages.filter(m => m.role === 'user').length
   const langName = LANGUAGES.find(l => l.code === language)?.name || 'English'
-  const starters = getStarters()
   const hasEnoughMessages = messages.length >= 2
 
   const downloadTranscriptPdf = () => {
@@ -355,7 +423,7 @@ export default function Novatutor() {
         >
           <div
             className="w-full max-w-2xl max-h-[80vh] rounded-2xl border overflow-hidden flex flex-col"
-            style={{ background: 'var(--bg-main)', borderColor: 'var(--card-border)' }}
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--card-border)', backdropFilter: 'blur(12px)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-5 border-b shrink-0" style={{ borderColor: 'var(--card-border)' }}>
@@ -364,7 +432,7 @@ export default function Novatutor() {
                 <button onClick={downloadFeedbackPdf} disabled={!feedbackText || feedbackLoading} className="btn-secondary text-xs px-3 py-1.5 rounded-lg">
                   Download PDF
                 </button>
-                <button onClick={() => setShowFeedback(false)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium hover:opacity-90" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }} aria-label="Close">
+                <button onClick={() => setShowFeedback(false)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium hover:opacity-90" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)' }} aria-label="Close">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                   Close
                 </button>
@@ -397,7 +465,7 @@ export default function Novatutor() {
         >
           <div
             className="w-full max-w-2xl max-h-[80vh] rounded-2xl border overflow-hidden flex flex-col"
-            style={{ background: 'var(--bg-main)', borderColor: 'var(--card-border)' }}
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--card-border)', backdropFilter: 'blur(12px)' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between p-5 border-b shrink-0" style={{ borderColor: 'var(--card-border)' }}>
@@ -406,7 +474,7 @@ export default function Novatutor() {
                 <button onClick={downloadTranscriptPdf} disabled={messages.length === 0} className="btn-secondary text-xs px-3 py-1.5 rounded-lg">
                   Download PDF
                 </button>
-                <button onClick={() => setShowTranscript(false)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium hover:opacity-90" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }} aria-label="Close">
+                <button onClick={() => setShowTranscript(false)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium hover:opacity-90" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)' }} aria-label="Close">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                   Close
                 </button>
@@ -426,9 +494,21 @@ export default function Novatutor() {
       )}
 
       {/* Top bar */}
-      <div className="shrink-0 border-b flex items-center justify-between h-14 px-5" style={{ borderColor: 'var(--card-border)', background: 'var(--bg-main)' }}>
-        <div className="flex items-center gap-3">
+      <div className="shrink-0 border-b flex items-center justify-between min-h-14 py-2 px-4 sm:px-5 gap-2" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <ProductNav current="Novatutor" />
+          <div className="min-w-0 hidden sm:block">
+            <p className="text-[11px] font-semibold text-primary leading-tight truncate">{t('tutor.welcomeHeading')}</p>
+            <p className="text-[10px] text-secondary leading-tight truncate" title={`${langName} · ${cefrLevel}`}>
+              {t('tutor.practiceLine', { lang: langName, level: cefrLevel })}
+            </p>
+          </div>
+          <p
+            className="sm:hidden text-[10px] text-secondary truncate min-w-0 max-w-[42vw]"
+            title={`${langName} · ${cefrLevel}`}
+          >
+            {t('tutor.practiceLine', { lang: langName, level: cefrLevel })}
+          </p>
           {turns > 0 && (
             <>
               <div className="h-4 w-px bg-(--card-border)" />
@@ -441,6 +521,26 @@ export default function Novatutor() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowAbbyPanel(v => !v)}
+            className={`btn-ghost h-8 px-2 md:px-2.5 rounded-lg flex items-center gap-1.5 shrink-0 ${showAbbyPanel ? 'text-brand-500 bg-brand-500/10' : 'text-secondary'}`}
+            title={showAbbyPanel ? t('tutor.abbyLayoutFocus') : t('tutor.abbyLayoutSplit')}
+            aria-pressed={showAbbyPanel}
+            aria-label={showAbbyPanel ? t('tutor.abbyLayoutFocus') : t('tutor.abbyLayoutSplit')}
+          >
+            <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              {showAbbyPanel ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v14H4V5z" />
+              ) : (
+                <g>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h7v14H4V5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 5h7v14h-7V5z" />
+                </g>
+              )}
+            </svg>
+            <span className="hidden lg:inline text-xs font-medium max-w-40 truncate">{showAbbyPanel ? t('tutor.abbyLayoutFocus') : t('tutor.abbyLayoutSplit')}</span>
+          </button>
           {/* Suggestions toggle */}
           <button
             onClick={() => setShowSuggestions(v => !v)}
@@ -476,7 +576,7 @@ export default function Novatutor() {
             <span className="hidden md:inline text-xs font-medium">{feedbackLoading ? 'Generating...' : 'Get feedback'}</span>
           </button>
           {/* UI language */}
-          <div className="flex items-center gap-1 h-8 rounded-md border px-2 cursor-pointer" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
+          <div className="flex items-center gap-1 h-8 rounded-md border px-2 cursor-pointer" style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
             <svg className="h-3 w-3 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A8.966 8.966 0 0 1 3 12c0-1.264.26-2.467.73-3.558" /></svg>
             <select
               value={uiLocale}
@@ -491,7 +591,7 @@ export default function Novatutor() {
             value={language}
             onChange={e => setLanguage(e.target.value)}
             className="h-8 rounded-md border text-xs font-medium px-2.5 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500"
-            style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)', color: 'var(--heading-main)' }}
+            style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', color: 'var(--heading-main)' }}
           >
             {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
           </select>
@@ -501,7 +601,7 @@ export default function Novatutor() {
                 key={l.value}
                 onClick={() => setCefrLevel(l.value)}
                 className={`h-8 px-2.5 text-xs font-bold transition-colors ${cefrLevel === l.value ? 'bg-brand-500 text-white' : 'text-secondary hover:text-primary'}`}
-                style={cefrLevel !== l.value ? { background: 'var(--card-bg)' } : undefined}
+                style={cefrLevel !== l.value ? { background: 'var(--glass-bg)' } : undefined}
               >
                 {l.label}
               </button>
@@ -511,187 +611,231 @@ export default function Novatutor() {
             value={cefrLevel}
             onChange={e => setCefrLevel(e.target.value as CEFRLevel)}
             className="sm:hidden h-8 rounded-md border text-xs font-bold px-2 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500"
-            style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)', color: 'var(--heading-main)' }}
+            style={{ borderColor: 'var(--card-border)', background: 'var(--glass-bg)', color: 'var(--heading-main)' }}
           >
             {CEFR_LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Chat */}
-      <div className="flex-1 flex min-h-0">
-        {/* Sidebar with avatar (desktop) */}
-        <div className="hidden md:flex w-72 shrink-0 border-r overflow-y-auto p-4 flex-col gap-4" style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}>
-          <TalkingHead3DAvatar
-            isSpeaking={isSpeaking}
-            isListening={isListening}
-            displayName="Novate Abby"
-            speakingAudioRef={speakingAudioRef}
-          />
-        </div>
-        <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-y-auto px-4 py-5">
-          <div className="max-w-2xl mx-auto space-y-4">
-            {messages.length === 0 && !autoIntroSent && (
-              <div className="flex flex-col items-center justify-center py-16 gap-6">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        {/* One TalkingHead3DAvatar always mounted — toggling layout must not remount (breaks MediaElementSource / lip-sync). */}
+        <div
+          className={`flex flex-1 min-h-0 min-w-0 ${
+            showAbbyPanel ? 'flex-col md:flex-row' : 'flex-col'
+          }`}
+        >
+          <div
+            className={
+              showAbbyPanel
+                ? isMobile
+                  ? 'shrink-0 overflow-hidden px-3 py-2'
+                  : 'hidden md:flex w-72 shrink-0 border-r overflow-y-auto p-4 flex-col gap-3'
+                : 'flex-1 w-full min-h-0 flex flex-col items-center justify-center px-4 py-3 overflow-hidden'
+            }
+            style={{
+              borderColor: 'var(--card-border)',
+              background: 'transparent',
+              backdropFilter: 'none',
+            }}
+          >
+            <div className={showAbbyPanel ? (isMobile ? 'max-w-md mx-auto' : '') : 'w-full max-w-lg mx-auto'}>
+              <TalkingHead3DAvatar
+                ref={ttsPlaybackRef}
+                isSpeaking={isSpeaking}
+                isListening={isListening}
+                displayName="Novate Abby"
+                compact={showAbbyPanel && isMobile}
+              />
+            </div>
+            <p
+              className={
+                showAbbyPanel
+                  ? `text-center text-secondary leading-snug px-1 ${isMobile ? 'text-[10px] mt-1' : 'text-[11px]'}`
+                  : 'text-[11px] text-center text-secondary leading-snug mt-1 max-w-md'
+              }
+            >
+              {t('tutor.practiceLine', { lang: langName, level: cefrLevel })}
+            </p>
+            {!lessonStarted && (
+              <div className={showAbbyPanel && isMobile ? 'pt-2' : ''}>
                 <button
                   type="button"
-                  onClick={handleStartPractice}
-                  className="btn-primary px-6 py-3 text-base font-semibold"
+                  onClick={() => { void triggerIntro() }}
+                  className={`btn-primary text-sm font-semibold px-4 py-2 rounded-lg w-full ${!showAbbyPanel ? 'mt-3 max-w-sm' : ''}`}
                 >
-                  {t('tutor.start') || 'Start practice'}
+                  {t('tutor.beginLesson')}
                 </button>
               </div>
             )}
-            {messages.length === 0 && autoIntroSent && isLoading && (
-              <div className="flex flex-col items-center justify-center py-16 gap-4">
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
-                <p className="text-sm text-secondary animate-pulse">Connecting to Novate Abby...</p>
-              </div>
-            )}
-            {messages.map(m => {
-              const parsed = parseAssistantMessage(m.content)
-              return (
-                <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : ''}`}>
-                  {m.role === 'assistant' && (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-500/10 text-xs font-bold text-brand-500 mt-0.5">T</div>
-                  )}
-                  <div className={`rounded-xl px-4 py-3 max-w-[80%] text-sm ${
-                    m.role === 'user'
-                      ? 'bg-brand-600 text-white rounded-tr-none'
-                      : 'rounded-tl-none text-primary'
-                  }`} style={m.role === 'assistant' ? { background: 'var(--subtle-bg)' } : undefined}>
-                    <p className="whitespace-pre-wrap">{m.role === 'assistant' ? parsed.mainContent : m.content}</p>
-                    {m.role === 'assistant' && (() => {
-                      const realCorrections = parsed.corrections.filter(c => !/^\s*[-•]?\s*none\s*needed\.?\s*$/i.test(c.trim()))
-                      if (realCorrections.length === 0) return null
-                      return (
-                        <div className="mt-2 border-t pt-2 space-y-1" style={{ borderColor: 'var(--card-border)' }}>
-                          <p className="text-[11px] font-bold uppercase tracking-widest text-amber-500">Corrections</p>
-                          {realCorrections.map((c, i) => (
-                            <p key={i} className="text-xs text-amber-600 dark:text-amber-300 leading-relaxed">
-                              {c}
-                            </p>
-                          ))}
-                        </div>
-                      )
-                    })()}
-                    {m.role === 'assistant' && parsed.translation && (
-                      <p className="mt-1.5 text-xs italic text-secondary border-l-2 pl-2" style={{ borderColor: 'var(--card-border)' }}>{parsed.translation}</p>
-                    )}
-                    {m.role === 'assistant' && parsed.transliteration && (
-                      <p className="mt-1 text-xs text-secondary">({parsed.transliteration})</p>
-                    )}
-                    {m.role === 'assistant' && parsed.suggestions.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {parsed.suggestions.map((s, i) => (
-                          <button
-                            key={i}
-                            onClick={() => sendMessage(s)}
-                            disabled={isLoading}
-                            className="text-xs rounded-full border px-3 py-1 text-brand-500 hover:bg-brand-500/10 transition-colors"
-                            style={{ borderColor: 'var(--card-border)' }}
-                          >
-                            {s}
-                          </button>
-                        ))}
+          </div>
+
+        <div
+          className={
+            showAbbyPanel
+              ? 'flex-1 flex flex-col min-h-0 min-w-0'
+              : 'flex flex-col min-h-0 min-w-0 w-full shrink-0 max-h-[min(48vh,420px)] overflow-hidden'
+          }
+        >
+          {/* Your lines always scroll; Abby’s bubbles only in split view. */}
+          <div className={hasVisibleThread ? 'flex-1 min-h-0 overflow-hidden' : 'flex-none overflow-hidden'}>
+            <div className={`relative overflow-y-auto px-4 ${hasVisibleThread ? 'h-full py-6' : 'py-3'}`}>
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background: 'transparent',
+                }}
+              />
+              <div className="relative max-w-5xl mx-auto space-y-4">
+                {chatError && (
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-500">{chatError}</div>
+                )}
+                {messages.map(m => {
+                  if (m.role === 'assistant' && !showAssistantMessages) return null
+                  const parsed = parseAssistantMessage(m.content)
+                  return (
+                    <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : ''}`}>
+                      {m.role === 'assistant' && (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-500/10 text-xs font-bold text-brand-500 mt-0.5">T</div>
+                      )}
+                      <div className={`rounded-xl px-4 py-3 max-w-[80%] text-sm ${
+                        m.role === 'user'
+                          ? 'bg-brand-600 text-white rounded-tr-none'
+                          : 'rounded-tl-none text-primary border'
+                      }`} style={m.role === 'assistant' ? { background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', borderColor: 'var(--card-border)' } : undefined}>
+                        <p className="whitespace-pre-wrap">{m.role === 'assistant' ? parsed.mainContent : m.content}</p>
+                        {m.role === 'assistant' && (() => {
+                          const realCorrections = parsed.corrections.filter(c => !/^\s*[-•]?\s*none\s*needed\.?\s*$/i.test(c.trim()))
+                          if (realCorrections.length === 0) return null
+                          return (
+                            <div className="mt-2 border-t pt-2 space-y-1" style={{ borderColor: 'var(--card-border)' }}>
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-amber-500">Corrections</p>
+                              {realCorrections.map((c, i) => (
+                                <p key={i} className="text-xs text-amber-600 dark:text-amber-300 leading-relaxed">
+                                  {c}
+                                </p>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                        {m.role === 'assistant' && parsed.translation && (
+                          <p className="mt-1.5 text-xs italic text-secondary border-l-2 pl-2" style={{ borderColor: 'var(--card-border)' }}>{parsed.translation}</p>
+                        )}
+                        {m.role === 'assistant' && parsed.transliteration && (
+                          <p className="mt-1 text-xs text-secondary">({parsed.transliteration})</p>
+                        )}
+                        {m.role === 'assistant' && parsed.suggestions.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {parsed.suggestions.map((s, i) => (
+                              <button
+                                key={i}
+                                onClick={() => sendMessage(s)}
+                                disabled={isLoading}
+                                className="text-xs rounded-full border px-3 py-1 text-brand-500 hover:bg-brand-500/10 transition-colors"
+                                style={{ borderColor: 'var(--card-border)' }}
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  {m.role === 'assistant' && (
-                    <button
-                      onClick={() => isSpeaking ? stopSpeaking() : speak(getSpeakableText(m.content))}
-                      className="btn-ghost h-8 w-8 p-0 shrink-0 mt-0.5"
-                      title={isSpeaking ? 'Stop' : t('tutor.listen')}
-                    >
-                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
-                    </button>
-                  )}
-                </div>
-              )
-            })}
+                      {m.role === 'assistant' && (
+                        <button
+                          onClick={() => isSpeaking ? stopSpeaking() : speak(getSpeakableText(m.content))}
+                          className="btn-ghost h-8 w-8 p-0 shrink-0 mt-0.5"
+                          title={isSpeaking ? 'Stop' : t('tutor.listen')}
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
 
-            {isLoading && (
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-500/10 text-xs font-bold text-brand-500 mt-0.5">T</div>
-                <div className="rounded-xl rounded-tl-none px-4 py-3" style={{ background: 'var(--subtle-bg)' }}>
-                  <div className="flex gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: '300ms' }} />
+                {showAssistantMessages && isLoading && messages.length > 0 && (
+                  <div className="flex gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-500/10 text-xs font-bold text-brand-500 mt-0.5">T</div>
+                    <div className="rounded-xl rounded-tl-none px-4 py-3" style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}>
+                      <div className="flex gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="h-1.5 w-1.5 rounded-full bg-zinc-400/50 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
-            <div ref={scrollRef} />
-          </div>
-        </div>
-
-        {/* Starters */}
-        {turns === 0 && !isLoading && messages.length > 0 && (
-          <div className="shrink-0 px-4 pb-2">
-            <div className="max-w-2xl mx-auto">
-              <p className="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">{t('tutor.tryScenario')}</p>
-              <div className="flex flex-wrap gap-2">
-                {starters.map(s => (
-                  <button key={s} onClick={() => sendMessage(s)} className="btn-secondary text-xs py-1.5 px-4 rounded-full">{s}</button>
-                ))}
+                )}
+                {hasVisibleThread && <div ref={scrollRef} />}
               </div>
             </div>
           </div>
-        )}
 
-        {/* Input */}
-        <div className="shrink-0 border-t p-3 safe-bottom" style={{ borderColor: 'var(--card-border)' }}>
-          {/* Only show "Speaker active" bar after the user has sent at least one message; keeps intro view clean */}
-          {isSpeaking && turns > 0 && (
-            <div className="max-w-2xl mx-auto mb-2 flex items-center gap-2 text-xs text-secondary">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              {t('tutor.speakerActive')}
-              <button onClick={stopSpeaking} className="ml-auto text-xs text-red-400 hover:text-red-500">Stop</button>
-            </div>
-          )}
-          <div className="flex gap-2 items-end max-w-2xl mx-auto">
-            <button
-              onClick={micSupported ? toggleMic : undefined}
-              disabled={!micSupported || isSpeaking}
-              className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-all relative ${
-                !micSupported ? 'opacity-50 cursor-not-allowed btn-secondary p-0!'
-                : isListening ? 'bg-red-600 text-white animate-pulse'
-                : isSpeaking ? 'opacity-30 cursor-not-allowed btn-secondary p-0!'
-                : 'btn-secondary p-0!'
-              }`}
-              title={!micSupported ? 'Voice input requires Chrome or Edge (and microphone permission)' : isListening ? t('tutor.stopSend') : isSpeaking ? t('tutor.speakerActive') : t('tutor.record')}
+            {/* Input — mt-auto pins the bar to the bottom when the transcript area is short */}
+            <div
+              className="shrink-0 mt-auto p-3 pb-6 mb-5 sm:mb-6 safe-bottom"
+              style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(12px)' }}
             >
-              <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" /><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" /></svg>
-              {!micSupported && (
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <svg className="h-4 w-4 text-red-400 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                </span>
+              {isSpeaking && (
+                <div className="max-w-2xl mx-auto mb-2 flex items-center gap-2 text-xs text-secondary">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {t('tutor.speakerActive')}
+                  <button onClick={stopSpeaking} className="ml-auto text-xs text-red-400 hover:text-red-500">Stop</button>
+                </div>
               )}
-            </button>
-            <textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder={t('tutor.placeholder', { lang: langName })}
-              rows={1}
-              className="flex-1 min-h-[40px] max-h-28 resize-none rounded-lg border px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/50 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-colors"
-              style={{ borderColor: 'var(--card-border)', background: 'var(--card-bg)' }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className="shrink-0 h-9 w-9 flex items-center justify-center rounded-lg text-white transition-all active:scale-[0.97] disabled:opacity-40"
-              style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', boxShadow: '0 0 20px -8px rgba(14, 165, 233, 0.4)' }}
-              title={t('tutor.send')}
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
-            </button>
+              <div
+                className="flex gap-2 items-end max-w-2xl mx-auto rounded-xl border px-2 py-1.5"
+                style={{ borderColor: 'var(--card-border, rgba(255,255,255,0.12))', background: 'var(--card-bg, rgba(255,255,255,0.04))' }}
+              >
+                <button
+                  onClick={isSpeaking ? stopSpeaking : (micSupported ? toggleMic : undefined)}
+                  disabled={!micSupported}
+                  className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-lg transition-all relative ${
+                    !micSupported ? 'opacity-50 cursor-not-allowed btn-secondary p-0!'
+                    : isSpeaking ? 'bg-red-600 text-white'
+                    : isListening ? 'bg-red-600 text-white animate-pulse'
+                    : 'btn-secondary p-0!'
+                  }`}
+                  title={!micSupported ? 'Voice input requires Chrome or Edge (and microphone permission)' : isSpeaking ? 'Stop' : isListening ? t('tutor.stopSend') : t('tutor.record')}
+                >
+                  {isSpeaking ? (
+                    <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 8h8v8H8z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                    </svg>
+                  )}
+                  {!micSupported && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <svg className="h-4 w-4 text-red-400 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                    </span>
+                  )}
+                </button>
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKey}
+                  placeholder={t('tutor.placeholder', { lang: langName })}
+                  rows={1}
+                  className="flex-1 min-h-10 max-h-28 resize-none rounded-lg px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/50 focus:outline-none transition-colors"
+                  style={{ border: 'none', background: 'transparent', outline: 'none' }}
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || isLoading}
+                  className="shrink-0 h-9 w-9 flex items-center justify-center rounded-lg text-white transition-all active:scale-[0.97] disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)', boxShadow: '0 0 20px -8px rgba(14, 165, 233, 0.4)' }}
+                  title={t('tutor.send')}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
